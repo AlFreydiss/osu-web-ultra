@@ -36,7 +36,7 @@ body.playing{cursor:none}
 .btn.go{background:var(--pk);box-shadow:0 0 30px #ff66aa66}
 .btn.go:hover{background:#ff7fb8}
 .btn.ghost{background:transparent;border-color:#ffffff2a;color:#ffffffaa}
-.btn.chip{padding:7px 17px;font-size:13px;border-radius:20px}
+.btn.chip{padding:7px 17px;font-size:13px;border-radius:20px;min-height:0}
 .btn.chip.sel{background:var(--pk);border-color:var(--pk)}
 .btn.chip.mod.sel{background:#e8a23c;border-color:#ffd700;color:#1a1020}
 .btnrow{display:flex;gap:9px;flex-wrap:wrap;justify-content:center}
@@ -181,6 +181,9 @@ const AIM_BASE=1.15;           // hitbox de base (× rayon du cercle), valeur os
 const AIM_BONUS_MAX=.5;        // bonus max de hitbox apporté par l'aide à la visée (à 100%)
 const QUANT_TOL=.28;           // tolérance de calage des beats sur la grille BPM (fraction de demi-temps)
 const QUANT_PHASES=24;         // nombre de phases testées pour trouver l'origine de la grille rythmique
+const BGV_DIM=.5;              // assombrissement de base de la vidéo de fond (s'ajoute au réglage Options)
+const BGV_SYNC_TOL=.35;        // resynchro de la vidéo si dérive > 0,35 s vs l'horloge audio (qui reste maître)
+const MAX_FILE_MB=900;         // taille max d'import — au-delà, arrayBuffer() risque de crasher l'onglet
 
 /* Stockage local sécurisé : le jeu doit tourner même si localStorage est bloqué (navigation privée stricte, iframe sandbox…) */
 const store={
@@ -229,6 +232,7 @@ function computeParams(){
 /* ════ AUDIO ════ */
 let AC=null,masterG,musicG,sfxG,analyser,fftData,srcNode=null,t0ctx=0,manualStop=false;
 let songBuf=null,songName='',analysis=null;
+let bgVideo=null,bgVideoUrl=null,loadErrTimer=0;
 const LEAD=2.0;
 function ensureAC(){
   if(AC)return;
@@ -438,7 +442,8 @@ function quantizeBeats(beats,bpm){
   if(dN)bestOff+=dSum/dN;
   const out=beats.map(b=>{
     const g=bestOff+Math.round((b.t-bestOff)/sub)*sub;
-    return Math.abs(b.t-g)<tol?{t:g,s:b.s,b:b.b}:{t:b.t,s:b.s,b:b.b};
+    // g>=0 : l'affinage de phase peut rendre bestOff négatif -> jamais d'objet à t<0 (auto-miss au lead-in)
+    return g>=0&&Math.abs(b.t-g)<tol?{t:g,s:b.s,b:b.b}:{t:b.t,s:b.s,b:b.b};
   }).sort((a,b2)=>a.t-b2.t);
   const ded=[];
   for(const b of out){
@@ -604,8 +609,22 @@ function rrect(x,y,w,h,r){cx.beginPath();cx.moveTo(x+r,y);cx.arcTo(x+w,y,x+w,y+h
 
 function drawBG(el,kiai){
   const f=bgFlash,dimF=1-opt.dim*.75;
-  cx.fillStyle=f>0?`rgb(${(26+f*22*dimF)|0},${(10+f*5*dimF)|0},${(38+f*18*dimF)|0})`:'#0e0b1c';
-  cx.fillRect(-30,-30,W+60,H+60);
+  const vid=bgVideo&&bgVideo.readyState>=2&&el>=0;
+  if(vid){
+    bgVideo.playbackRate=RATE;
+    if(state==='playing'){if(bgVideo.paused)bgVideo.play().catch(()=>{});}
+    else if(!bgVideo.paused)bgVideo.pause();
+    const t=el/1000;
+    if(t<bgVideo.duration&&Math.abs(bgVideo.currentTime-t)>BGV_SYNC_TOL)bgVideo.currentTime=t;
+    const vw=bgVideo.videoWidth,vh=bgVideo.videoHeight,s=Math.max(W/vw,H/vh),dw=vw*s,dh=vh*s;
+    cx.drawImage(bgVideo,(W-dw)/2,(H-dh)/2,dw,dh);
+    // voile sombre par-dessus la vidéo : lisibilité des cercles avant tout (contraste)
+    cx.fillStyle='rgba(8,6,16,'+Math.min(.92,BGV_DIM+opt.dim*.4-f*.08)+')';
+    cx.fillRect(-30,-30,W+60,H+60);
+  }else{
+    cx.fillStyle=f>0?`rgb(${(26+f*22*dimF)|0},${(10+f*5*dimF)|0},${(38+f*18*dimF)|0})`:'#0e0b1c';
+    cx.fillRect(-30,-30,W+60,H+60);
+  }
   let pulse=0;
   if(state!=='menu'&&analysis){
     for(let i=beatPtr;i<analysis.beats.length;i++){
@@ -740,7 +759,7 @@ function drawSliderObj(o,el){
     cx.save();
     baseCircle(bp.x,bp.y,col,1,null);
     cx.globalAlpha=fol?.95:.35;
-    cx.beginPath();cx.arc(bp.x,bp.y,R*2.4,0,PI2);
+    cx.beginPath();cx.arc(bp.x,bp.y,R*(2.4+opt.aim/100*.8),0,PI2);
     cx.strokeStyle=fol?'#fff':'rgba(255,255,255,.4)';
     cx.lineWidth=fol?4:2;cx.shadowBlur=fol?16:0;cx.shadowColor='#fff';cx.stroke();
     cx.restore();
@@ -915,7 +934,7 @@ function tryHit(px,py){
   for(const o of cands){
     if(Math.hypot(px-o.x,py-o.y)>hitR)continue;
     const diff=el-o.t,ad=Math.abs(diff);
-    if(ad>W50)return;
+    if(ad>W50)continue; // objet expiré qui chevauche : on regarde le candidat suivant (anti note-lock)
     const q=ad<=W3?300:ad<=W1?100:50;
     errs.push({d:diff,rt:performance.now()});
     if(o.k===0){o.hit=true;countHit(q,o.x,o.y,CLR[o.ci]);}
@@ -1065,8 +1084,24 @@ function doPause(){
 function doResume(){state='playing';AC.resume();show(null);}
 
 /* ════ CHARGEMENT ════ */
+function clearBgVideo(){
+  if(bgVideo){try{bgVideo.pause()}catch(e){}}
+  if(bgVideoUrl){URL.revokeObjectURL(bgVideoUrl);bgVideoUrl=null;}
+  bgVideo=null;
+}
+/* Si le fichier importé contient une piste vidéo, on la garde comme fond de gameplay (muette,
+   dessinée dans le canvas, synchronisée sur l'horloge audio). Pas de piste vidéo -> fond classique. */
+function setBgVideo(f){
+  clearBgVideo();
+  if(!/^video\//.test(f.type)&&!/\.(mp4|mkv|webm|mov)$/i.test(f.name))return;
+  const v=document.createElement('video');
+  bgVideoUrl=URL.createObjectURL(f);
+  v.src=bgVideoUrl;v.muted=true;v.playsInline=true;v.preload='auto';
+  v.addEventListener('loadeddata',()=>{if(v.videoWidth>0)bgVideo=v;},{once:true});
+}
 async function loadDemo(){
   ensureAC();AC.resume();
+  clearTimeout(loadErrTimer);clearBgVideo();
   state='loading';show('sLoad');$('loadTxt').textContent='Génération de la démo…';
   await new Promise(r=>setTimeout(r,30));
   try{songBuf=await genDemo();songName='Neon Drive (démo)';await runAnalysis();}
@@ -1074,17 +1109,23 @@ async function loadDemo(){
 }
 async function loadFile(f){
   ensureAC();AC.resume();
+  clearTimeout(loadErrTimer);
   state='loading';show('sLoad');
   const mo=Math.round(f.size/1048576);
+  if(mo>MAX_FILE_MB){
+    $('loadTxt').textContent='Fichier trop lourd ('+mo+' Mo, max '+MAX_FILE_MB+' Mo) 😕 — réencode ou prends un extrait.';
+    loadErrTimer=setTimeout(quitToMenu,3200);return;
+  }
   $('loadTxt').textContent='Décodage audio… ('+(mo||'<1')+' Mo'+(mo>200?' — gros fichier, patience !':'')+')';
   try{
     const ab=await f.arrayBuffer();
     songBuf=await AC.decodeAudioData(ab);
     songName=f.name.replace(/\.[^.]+$/,'');
+    setBgVideo(f);
     await runAnalysis();
   }catch(e){
     $('loadTxt').textContent='Impossible de lire « '+f.name+' » 😕 — le navigateur ne décode pas ce codec audio (AC3/DTS par ex.). Réessaie avec un MP3, ou un MP4 en audio AAC.';
-    setTimeout(quitToMenu,3200);
+    loadErrTimer=setTimeout(quitToMenu,3200);
   }
 }
 async function runAnalysis(){
@@ -1140,6 +1181,7 @@ if(!LB_ON)$('bBoard').style.display='none';
 $('bPub').onclick=async()=>{
   const p=$('iPseudo').value.trim();
   if(p.length<2||p.length>16){pubMsg('Pseudo : 2 à 16 caractères','err');return;}
+  if(n3+n1+n5+nm===0){pubMsg('Aucune note jouée — rien à publier 😉','err');return;}
   if(Date.now()-lastPub<LB_THROTTLE_MS){pubMsg('Doucement ! Réessaie dans quelques secondes…','err');return;}
   store.set('pseudo',p);lastPub=Date.now();$('bPub').disabled=true;
   pubMsg('Envoi…');
@@ -1265,6 +1307,7 @@ function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min(48,now-prev);prev=now;
   if(state==='menu'||state==='loading'||state==='ready'||state==='results'||state==='failed'){
+    if(bgVideo&&!bgVideo.paused)bgVideo.pause();
     drawMenuBG();return;}
   const el=state==='paused'?pauseEl:elapsed();
   bgFlash=Math.max(0,bgFlash-.05);
