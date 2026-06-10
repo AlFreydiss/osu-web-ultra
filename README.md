@@ -1,11 +1,12 @@
-# osu!web ULTRA 🎵
+# Fred'isu 🎵
 
-Clone d'osu! **100% navigateur, un seul fichier, zéro dépendance**. Importe un MP3 → la map est générée par analyse spectrale (basses/aigus, sections kiai, BPM). Déployable en glisser-déposer.
+Le rhythm game de Freydiss — clone d'osu! **100% navigateur, un seul fichier, zéro dépendance**. Importe un MP3 ou un MP4 → la map est générée par analyse spectrale (basses/aigus, sections kiai) et **calée sur la grille de BPM détectée**. Déployable en glisser-déposer.
 
 ## Jouer
 
 - **▶ Jouer la démo** : morceau synthwave généré procéduralement
-- **🎵 Importer un MP3** : n'importe quel fichier audio supporté par le navigateur
+- **🎵 Importer un MP3 / MP4** : audio (mp3, m4a, ogg, wav…) ou vidéo (mp4, mkv, webm — seule la piste audio est utilisée)
+- Visée difficile ? Monte « **Aide à la visée** » dans ⚙ Options (hitbox élargie jusqu'à +50 %)
 
 ## Contrôles
 
