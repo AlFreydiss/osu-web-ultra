@@ -1069,15 +1069,17 @@ async function loadDemo(){
 }
 async function loadFile(f){
   ensureAC();AC.resume();
-  state='loading';show('sLoad');$('loadTxt').textContent='Décodage audio…';
+  state='loading';show('sLoad');
+  const mo=Math.round(f.size/1048576);
+  $('loadTxt').textContent='Décodage audio… ('+(mo||'<1')+' Mo'+(mo>200?' — gros fichier, patience !':'')+')';
   try{
     const ab=await f.arrayBuffer();
     songBuf=await AC.decodeAudioData(ab);
     songName=f.name.replace(/\.[^.]+$/,'');
     await runAnalysis();
   }catch(e){
-    $('loadTxt').textContent='Format non supporté 😕';
-    setTimeout(quitToMenu,1700);
+    $('loadTxt').textContent='Impossible de lire « '+f.name+' » 😕 — le navigateur ne décode pas ce codec audio (AC3/DTS par ex.). Réessaie avec un MP3, ou un MP4 en audio AAC.';
+    setTimeout(quitToMenu,3200);
   }
 }
 async function runAnalysis(){
