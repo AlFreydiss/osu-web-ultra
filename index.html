@@ -224,7 +224,7 @@ body.playing{cursor:none}
       <button class="ss-cbtn" id="bRandDiff" style="--edge:#4FC0FF"><span class="ico">🎲</span>Aléatoire</button>
       <button class="ss-cbtn" id="bOpt3" style="--edge:#a06bff"><span class="ico">⚙</span>Options</button>
     </div>
-    <div class="ss-logo" id="bGo" role="button" tabindex="0" title="Jouer !">Freyd'iu</div>
+    <div class="ss-logo" id="bGo" role="button" tabindex="0" title="Jouer !">▶ PLAY</div>
   </div>
 </div>
 
@@ -276,7 +276,7 @@ body.playing{cursor:none}
   <div class="orow"><label>Volume effets</label><input type="range" id="oVs" min="0" max="100" value="90"><span class="val" id="vVs">90%</span></div>
   <p class="ogrp">🎯 Gameplay</p>
   <div class="orow"><label>Vitesse d'approche (AR)</label><input type="range" id="oAr" min="3" max="10" step="0.5" value="8"><span class="val" id="vAr">8</span></div>
-  <div class="orow"><label>Taille des cercles (CS)</label><input type="range" id="oCs" min="0" max="10" step="0.5" value="4"><span class="val" id="vCs">4</span></div>
+  <div class="orow"><label>Taille des cercles (CS)</label><input type="range" id="oCs" min="2" max="6" step="0.5" value="4"><span class="val" id="vCs">4</span></div>
   <div class="orow"><label>Précision exigée (OD)</label><input type="range" id="oOd" min="2" max="10" step="0.5" value="7"><span class="val" id="vOd">7</span></div>
   <div class="orow"><label>Aide à la visée</label><input type="range" id="oAim" min="0" max="100" value="35"><span class="val" id="vAim">35%</span></div>
   <p class="ogrp">✨ Visuel</p>
@@ -396,6 +396,8 @@ const mods={hd:false,hr:false,dt:false,fl:false};
 Object.assign(opt,store.get('opt',{}));
 Object.assign(mods,store.get('mods',{}));
 if(opt.cs>10)opt.cs=clamp((54.4-opt.cs)/4.48,0,10); // migration : ancien réglage en px → CS osu!
+// La difficulté = complexité + vitesse, jamais la taille : CS borné à une plage lisible
+if(!(opt.cs>=2&&opt.cs<=6))opt.cs=4;
 if(IS_MOBILE)mods.fl=false; // FL injouable au doigt : le doigt cache le trou de lumière
 const saveOpt=()=>{store.set('opt',opt);store.set('mods',mods);};
 const modStr=()=>['hd','hr','dt','fl'].filter(m=>mods[m]).map(m=>m.toUpperCase()).join(' ');
@@ -410,7 +412,7 @@ let PRE=750,FADE=400,W3=37.5,W1=83.5,W50=129.5,RPS=1.1,R=40,CS_EFF=4,RATE=1;
 function computeParams(){
   computePlayfield();
   let ar=opt.ar,od=opt.od,cs=opt.cs;
-  if(mods.hr){ar=Math.min(10,ar*1.4);od=Math.min(10,od*1.4);cs=Math.min(10,cs*1.3);}
+  if(mods.hr){ar=Math.min(10,ar*1.4);od=Math.min(10,od*1.4);cs=Math.min(6,cs*1.08);} // HR ne touche presque pas la taille
   CS_EFF=cs;
   // Formules officielles osu! — voir https://osu.ppy.sh/wiki (AR / OD / CS)
   R=(54.4-4.48*cs)*PF.s;                                  // rayon : r = 54.4 − 4.48 × CS (osu!px → écran)
@@ -462,6 +464,9 @@ function startMusic(){
 }
 function stopMusic(fade){
   if(!srcNode)return;manualStop=true;
+  // l'ancienne source ne doit JAMAIS re-déclencher finish() (sinon un retry rapide
+  // re-finissait la nouvelle partie quand son onended arrivait après le fade)
+  srcNode.onended=null;
   if(fade){musicG.gain.setTargetAtTime(0,AC.currentTime,.35);
     const s=srcNode;setTimeout(()=>{try{s.stop()}catch(e){}},1400);}
   else try{srcNode.stop()}catch(e){}
@@ -470,7 +475,7 @@ function stopMusic(fade){
 function skipIntro(){
   if(!srcNode||!map.length)return;
   const tgtMs=Math.max(0,map[0].t-2200);
-  manualStop=true;try{srcNode.stop()}catch(e){}
+  manualStop=true;srcNode.onended=null;try{srcNode.stop()}catch(e){}
   srcNode=AC.createBufferSource();srcNode.buffer=songBuf;
   srcNode.playbackRate.value=RATE;srcNode.connect(analyser);
   manualStop=false;
