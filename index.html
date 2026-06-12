@@ -221,6 +221,9 @@ body.playing{cursor:none}
 .res-grade{flex:0 0 190px;display:flex;flex-direction:column;align-items:center;gap:6px;
   background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.05),transparent 70%);border-radius:18px;padding:16px 0}
 .res-grade .grade{font-size:128px;filter:drop-shadow(0 0 34px currentColor)}
+.grade.ss{animation:gradeIn .65s cubic-bezier(.22,1,.36,1) both,ssShine 1.6s ease-in-out .7s infinite!important}
+@keyframes ssShine{0%,100%{filter:drop-shadow(0 0 34px currentColor) brightness(1)}50%{filter:drop-shadow(0 0 60px currentColor) brightness(1.35)}}
+@media (prefers-reduced-motion:reduce){.grade.ss{animation:none!important}}
 .res-right{flex:1;display:flex;flex-direction:column;gap:12px;align-items:stretch}
 .res-right .stats{grid-template-columns:auto auto auto auto;gap:8px 18px;font-size:13px}
 .res-right canvas{width:100%}
@@ -970,17 +973,21 @@ function genMap(){
       tx=clamp(W-tx+(rng()-.5)*90,padS,W-padS);
       ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
     }
-    if(!stream&&gap>320&&gap<1600&&rng()<d.sld*(kiai?.8:1)){
-      const rep=gap>900&&rng()<.45?1:0;
-      const sdur=rep?clamp(gap*.42,220,800):clamp(gap*.82,240,1200);
+    if(!stream&&gap>320&&gap<2600&&rng()<d.sld*(kiai?.8:1)){
+      // multi-rebonds comme les vraies maps : jusqu'à 3 allers-retours sur les longues tenues
+      let rep=0;
+      if(gap>1600&&rng()<.25)rep=3;
+      else if(gap>1050&&rng()<.35)rep=2;
+      else if(gap>620&&rng()<.5)rep=1;
+      const sdur=rep?clamp(gap*.8/(rep+1),180,700):clamp(gap*.82,240,1200);
       const slen=clamp(sdur*.32*spc+40,90,440);
       const sa=ang+(rng()-.5)*1.2;
       const ex=clamp(tx+Math.cos(sa)*slen,padS,W-padS);
       const ey=clamp(ty+Math.sin(sa)*slen,padT,H-padB);
       objs.push({k:1,t:b.t,dur:sdur,span:sdur*(rep+1),rep,x:tx,y:ty,num,ci,
         path:mkPath(tx,ty,ex,ey,(rng()-.5)*slen*1.1),
-        hh:false,hj:false,ft:0,fEnd:false,done:false,tick:0,bounced:false});
-      if(rep){x=tx;y=ty;}else{x=ex;y=ey;ang=Math.atan2(ey-ty,ex-tx);}
+        hh:false,hj:false,ft:0,fEnd:false,done:false,tick:0,bn:0,kj:kiai?1:0});
+      if(rep%2){x=tx;y=ty;}else{x=ex;y=ey;ang=Math.atan2(ey-ty,ex-tx);}
     }else{
       objs.push({k:0,t:b.t,x:tx,y:ty,num,ci,hit:false,miss:false,kj:kiai?1:0});
       x=tx;y=ty;
@@ -1033,6 +1040,10 @@ function addCombo(){
     tone(880,'sine',.18,.14);tone(1108,'sine',.18,.1);tone(1318,'sine',.22,.1);
     vfxList.push(new HitFX(W/2,130,300,'#ffd700',combo+'x !!'));
     shake=Math.max(shake,4);
+  }else if(combo>0&&combo%50===0&&combo!==lastBurst){
+    lastBurst=combo; // palier intermédiaire : petit jingle discret
+    tone(880,'sine',.12,.1);tone(1108,'sine',.14,.08);
+    vfxList.push(new HitFX(W/2,130,300,'#ffffff',combo+'x'));
   }
 }
 function countHit(q,x,y,c,withCombo=true){
@@ -1423,13 +1434,17 @@ function drawSliderObj(o,el){
     cx.beginPath();cx.arc(ep.x,ep.y,R*.42,0,PI2);
     cx.strokeStyle='rgba(255,255,255,.6)';cx.lineWidth=Math.max(2.5,R*.07);cx.stroke();
   }
-  // flèche de repeat : chevron blanc pulsant au beat
-  if(o.rep&&!o.bounced&&snake>=1){
-    const b2=p.pts[p.pts.length-2];
-    const aa=Math.atan2(b2.y-ep.y,b2.x-ep.x);
+  // flèches de rebond : au bout que la balle vise, alternent à chaque rebond
+  const phD=el<o.t?0:clamp((el-o.t)/o.dur,0,o.rep+1);
+  const segD=Math.min(o.rep,Math.floor(phD));
+  if(o.rep&&segD<o.rep&&snake>=1&&!o.done){
+    const atEnd=segD%2===0;
+    const tip=atEnd?p.pts[p.pts.length-1]:p.pts[0];
+    const nb=atEnd?p.pts[p.pts.length-2]:p.pts[1];
+    const aa=Math.atan2(nb.y-tip.y,nb.x-tip.x);
     const bms=analysis&&analysis.bpm?60000/analysis.bpm:600;
     const sc=1+.18*Math.max(0,1-(el%bms)/bms*2.2);
-    cx.save();cx.translate(ep.x,ep.y);cx.rotate(aa);cx.scale(sc,sc);
+    cx.save();cx.translate(tip.x,tip.y);cx.rotate(aa);cx.scale(sc,sc);
     cx.lineWidth=Math.max(3.5,R*.16);cx.lineCap='round';cx.strokeStyle='#fff';
     cx.beginPath();cx.moveTo(-R*.18,-R*.32);cx.lineTo(R*.3,0);cx.lineTo(-R*.18,R*.32);cx.stroke();
     cx.restore();
@@ -1443,8 +1458,9 @@ function drawSliderObj(o,el){
   if(!o.hj)approach(o.x+hx,o.y,col,el,o.t,alpha);
   if(el<o.t||!o.hj)baseCircle(o.x+hx,o.y,o.ci,alpha,o.hj?null:o.num);
   if(el>=o.t&&!o.done){
-    const ph=clamp((el-o.t)/o.dur,0,o.rep?2:1);
-    const pos=o.rep?(ph<=1?ph:2-ph):ph;
+    const ph=clamp((el-o.t)/o.dur,0,o.rep+1);
+    const segB=Math.min(o.rep,Math.floor(ph)),fracB=ph-Math.floor(ph);
+    const pos=Math.floor(ph)>o.rep?(o.rep%2?0:1):(segB%2?1-fracB:fracB);
     const bp=ptAt(p,pos);
     const folR=R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8); // hitbox (l'aide à la visée élargit la zone…)
     const folVis=R*2.05;                             // …mais le VISUEL reste à ~2×R (mesuré sur le vrai client)
@@ -1459,7 +1475,7 @@ function drawSliderObj(o,el){
     // slider ball : sprite pré-rendu + chevron orienté dans le sens du déplacement
     const bs=SPRITES.ball[o.ci%4];
     if(bs)cx.drawImage(bs,bp.x-bs._S/2,bp.y-bs._S/2,bs._S,bs._S);
-    const ahead=ptAt(p,clamp(pos+(o.rep&&ph>1?-.025:.025),0,1));
+    const ahead=ptAt(p,clamp(pos+(segB%2?-.025:.025),0,1));
     const ba=Math.atan2(ahead.y-bp.y,ahead.x-bp.x);
     cx.save();cx.translate(bp.x,bp.y);cx.rotate(ba);
     cx.strokeStyle='rgba(255,255,255,.95)';cx.lineWidth=Math.max(2.5,R*.1);cx.lineCap='round';
@@ -1987,8 +2003,9 @@ function updateGame(el,dt){
       if(!o.hj&&el>o.t+W50){o.hj=true;o.hh=false;breakCombo();
         hp=clamp(hp-.055,0,1);shake=Math.max(shake,4);tone(180,'sawtooth',.1,.09);}
       if(el>=o.t&&!o.done){
-        const ph=clamp((el-o.t)/o.dur,0,o.rep?2:1);
-        const pos=o.rep?(ph<=1?ph:2-ph):ph;
+        const ph=clamp((el-o.t)/o.dur,0,o.rep+1);
+        const segI=Math.min(o.rep,Math.floor(ph)),frac=ph-Math.floor(ph);
+        const pos=Math.floor(ph)>o.rep?(o.rep%2?0:1):(segI%2?1-frac:frac);
         const bp=ptAt(o.path,pos);
         const folNow=pressing&&Math.hypot(mx-bp.x,my-bp.y)<R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8);
         if(folNow)o.folLast=el;
@@ -1997,12 +2014,14 @@ function updateGame(el,dt){
           const tk=Math.floor((el-o.t)/o.span*4*(o.rep+1));
           if(tk>o.tick){o.tick=tk;tone(560,'sine',.04,.09);
             vfxList.push(new HitFX(bp.x,bp.y,10,comboCol(o.ci),''));}} // petit pop au tick collecté
-        if(o.rep&&!o.bounced&&ph>=1){o.bounced=true;
+        // un combo (et un son) à CHAQUE rebond suivi
+        const bn=Math.min(o.rep,Math.floor(ph));
+        if(bn>o.bn){o.bn=bn;
           if(fol){addCombo();tone(700,'sine',.06,.13);}}
         if((el-o.t)>=o.span){o.done=true;o.fEnd=fol;
           const parts=(o.hh?1:0)+((o.ft/o.span)>=.45?1:0)+(o.fEnd?1:0);
           const q=parts===3?300:parts===2?100:parts>=1?50:0;
-          const ep=o.rep?o.path.pts[0]:o.path.pts[o.path.pts.length-1];
+          const ep=o.rep%2?o.path.pts[0]:o.path.pts[o.path.pts.length-1];
           countHit(q,ep.x,ep.y,comboCol(o.ci),false);
           if(q>0&&o.fEnd)addCombo();
           else if(!o.fEnd)breakCombo();}
@@ -2086,6 +2105,7 @@ function finish(){
     ur=Math.round(Math.sqrt(v)*10);
   }
   $('gGrade').textContent=g;$('gGrade').style.color=c;lastGradeCol=c;
+  $('gGrade').classList.toggle('ss',g==='SS'); // étincelle dorée sur le sans-faute
   $('gSub').textContent=DIFFS[opt.diff].n+(modStr()?' · '+modStr():'')+' · UR '+ur;
   $('gStats').innerHTML=
     '<span>Score</span><b>'+score.toLocaleString('fr-FR')+'</b>'+
