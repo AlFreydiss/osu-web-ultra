@@ -21,6 +21,7 @@
 *{margin:0;padding:0;box-sizing:border-box;font-family:'Segoe UI',system-ui,sans-serif}
 html,body{height:100%;background:#000;overflow:hidden}
 canvas{position:fixed;inset:0}
+#gHisto{position:static;inset:auto} /* l'histogramme des résultats reste dans le flux (la règle canvas globale vise le canvas de jeu) */
 body.playing{cursor:none}
 #ui{position:fixed;inset:0;pointer-events:none;z-index:5}
 /* Transitions d'écran lazer : fade + léger scale */
@@ -75,6 +76,8 @@ body.playing{cursor:none}
 /* ════ Song select — fidélité lazer ════ */
 #sReady{justify-content:flex-start;align-items:stretch;gap:0;background:#0a0712}
 .ss-bg{position:absolute;inset:-30px;background-size:cover;background-position:center;filter:blur(16px) brightness(.42) saturate(1.1);opacity:0;transition:opacity .5s ease}
+/* La vidéo de la map joue doucement derrière le song select, avec un peu d'opacité */
+.ss-vid{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.34;filter:brightness(.75) saturate(1.05)}
 .ss-left{display:flex;flex-direction:column;gap:14px;min-width:360px;max-width:520px}
 .ss-lb{background:rgba(12,8,22,.85);border:1px solid #ffffff12;border-radius:14px;padding:14px 18px;color:#fff}
 .ss-tabs{display:flex;gap:4px;align-items:center;margin-bottom:10px}
@@ -146,10 +149,19 @@ body.playing{cursor:none}
 .ss-logo:hover{filter:brightness(1.12)}
 @media (prefers-reduced-motion:reduce){.ss-logo{animation:none}}
 @media (max-width:900px){.ss-wrap{flex-direction:column;overflow-y:auto}.ss-right{width:100%;margin:0}.ss-info{min-width:0;max-width:none}}
-/* Résultats : entrée animée */
+/* Résultats : entrée animée + layout lazer (grade à gauche, stats à droite) */
 @keyframes gradeIn{0%{opacity:0;transform:scale(2.2) rotate(-6deg)}60%{opacity:1;transform:scale(.94)}100%{transform:scale(1)}}
 .screen.on .grade{animation:gradeIn .65s cubic-bezier(.22,1,.36,1) both}
 @media (prefers-reduced-motion:reduce){.screen.on .grade{animation:none}}
+.card.res{max-width:700px;min-width:560px}
+.res-top{display:flex;gap:30px;align-items:center;width:100%}
+.res-grade{flex:0 0 190px;display:flex;flex-direction:column;align-items:center;gap:6px;
+  background:radial-gradient(circle at 50% 40%,rgba(255,255,255,.05),transparent 70%);border-radius:18px;padding:16px 0}
+.res-grade .grade{font-size:128px;filter:drop-shadow(0 0 34px currentColor)}
+.res-right{flex:1;display:flex;flex-direction:column;gap:12px;align-items:stretch}
+.res-right .stats{grid-template-columns:auto auto auto auto;gap:8px 18px;font-size:13px}
+.res-right canvas{width:100%}
+@media (max-width:760px){.card.res{min-width:0}.res-top{flex-direction:column;gap:10px}.res-right .stats{grid-template-columns:auto auto}}
 </style>
 </head>
 <body>
@@ -174,6 +186,7 @@ body.playing{cursor:none}
 <div class="screen" id="sLoad"><div class="spin"></div><p id="loadTxt" style="color:#fff;font-size:16px">Chargement…</p></div>
 
 <div class="screen" id="sReady">
+  <video id="ssVid" class="ss-vid" muted loop playsinline style="display:none"></video>
   <div class="ss-bg" id="ssBgA"></div><div class="ss-bg" id="ssBgB"></div>
   <div class="ss-wrap">
     <div class="ss-left">
@@ -215,6 +228,7 @@ body.playing{cursor:none}
         <button class="btn chip mod" data-m="hr" title="Hard Rock : tout plus dur">HR</button>
         <button class="btn chip mod" data-m="dt" title="Double Time : x1.5">DT</button>
         <button class="btn chip mod" data-m="fl" title="Flashlight : vision réduite">FL</button>
+        <button class="btn chip mod" data-m="nf" title="No Fail : impossible de perdre (score ×0.5)">NF</button>
       </div>
     </div>
   </div>
@@ -243,11 +257,17 @@ body.playing{cursor:none}
   <button class="btn ghost" id="bQuit2">Menu</button>
 </div></div>
 
-<div class="screen" id="sRes"><div class="card">
-  <div class="grade" id="gGrade">S</div>
-  <p class="muted" id="gSub"></p>
-  <div class="stats" id="gStats"></div>
-  <canvas id="gHisto" width="300" height="56" style="border-radius:8px;background:rgba(255,255,255,.04)"></canvas>
+<div class="screen" id="sRes"><div class="card res">
+  <div class="res-top">
+    <div class="res-grade">
+      <div class="grade" id="gGrade">S</div>
+      <p class="muted" id="gSub"></p>
+    </div>
+    <div class="res-right">
+      <div class="stats" id="gStats"></div>
+      <canvas id="gHisto" width="300" height="56" style="border-radius:8px;background:rgba(255,255,255,.04)"></canvas>
+    </div>
+  </div>
   <p class="muted small">Top session</p>
   <table class="board" id="gBoard"></table>
   <div id="pubBox" style="display:none;width:100%;flex-direction:column;gap:8px;align-items:center">
@@ -279,7 +299,9 @@ body.playing{cursor:none}
   <div class="orow"><label>Taille des cercles (CS)</label><input type="range" id="oCs" min="2" max="6" step="0.5" value="4"><span class="val" id="vCs">4</span></div>
   <div class="orow"><label>Précision exigée (OD)</label><input type="range" id="oOd" min="2" max="10" step="0.5" value="7"><span class="val" id="vOd">7</span></div>
   <div class="orow"><label>Aide à la visée</label><input type="range" id="oAim" min="0" max="100" value="35"><span class="val" id="vAim">35%</span></div>
+  <div class="orow"><label>Décalage audio (ms)</label><input type="range" id="oOff" min="-80" max="80" step="5" value="0"><span class="val" id="vOff">0</span></div>
   <p class="ogrp">✨ Visuel</p>
+  <div class="orow"><label>Rendu HD (écrans 1440p/4K)</label><input type="checkbox" id="oHd" checked><span class="val"></span></div>
   <div class="orow"><label>Assombrissement fond</label><input type="range" id="oDim" min="0" max="100" value="40"><span class="val" id="vDim">40%</span></div>
   <div class="orow"><label>Effets réactifs au son</label><input type="checkbox" id="oFx" checked><span class="val"></span></div>
   <div class="orow"><label>Traînée du curseur</label><input type="checkbox" id="oTrail" checked><span class="val"></span></div>
@@ -379,8 +401,19 @@ const IS_MOBILE=(navigator.maxTouchPoints>0||'ontouchstart'in window)&&Math.min(
 const KIAI_MAX=IS_MOBILE?KIAI_MAX_MOBILE:KIAI_MAX_DESKTOP;
 
 const CV=document.getElementById('cv'),cx=CV.getContext('2d',{alpha:false}); // pas de desynchronized : scintille sur certains GPU Windows
-let W=CV.width=innerWidth,H=CV.height=innerHeight;
-addEventListener('resize',()=>{W=CV.width=innerWidth;H=CV.height=innerHeight;computePlayfield();});
+/* Rendu HD : le canvas est dimensionné en pixels PHYSIQUES (devicePixelRatio, cap 2)
+   et tout le code continue de dessiner en px CSS via setTransform — cercles, textes
+   et sliders nets sur écrans 1440p/4K. Désactivable (Options) et off sur mobile. */
+let DPRv=1,W=innerWidth,H=innerHeight;
+function applyDPR(){
+  DPRv=(opt.hd2x===false||IS_MOBILE)?1:Math.min(2,devicePixelRatio||1);
+  W=innerWidth;H=innerHeight;
+  CV.width=Math.round(W*DPRv);CV.height=Math.round(H*DPRv);
+  CV.style.width=W+'px';CV.style.height=H+'px';
+  try{SPRITES.key='';}catch(e){} // re-bake des sprites (TDZ au tout premier appel : ignoré)
+  if(typeof computePlayfield==='function'){computePlayfield();}
+}
+addEventListener('resize',()=>{applyDPR();computeParams&&computeParams();});
 const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const PI2=Math.PI*2;
@@ -391,17 +424,18 @@ const h2r=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.sli
 const fmtT=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 
 /* ════ OPTIONS & MODS ════ */
-const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.25,aim:35,trail:true,fx:true,snake:true,skinBeige:false,diff:1};
-const mods={hd:false,hr:false,dt:false,fl:false};
+const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.25,aim:35,offset:0,trail:true,fx:true,snake:true,skinBeige:false,hd2x:true,diff:1};
+const mods={hd:false,hr:false,dt:false,fl:false,nf:false};
 Object.assign(opt,store.get('opt',{}));
 Object.assign(mods,store.get('mods',{}));
 if(opt.cs>10)opt.cs=clamp((54.4-opt.cs)/4.48,0,10); // migration : ancien réglage en px → CS osu!
 // La difficulté = complexité + vitesse, jamais la taille : CS borné à une plage lisible
 if(!(opt.cs>=2&&opt.cs<=6))opt.cs=4;
+applyDPR(); // taille initiale du canvas (HD si dispo)
 if(IS_MOBILE)mods.fl=false; // FL injouable au doigt : le doigt cache le trou de lumière
 const saveOpt=()=>{store.set('opt',opt);store.set('mods',mods);};
-const modStr=()=>['hd','hr','dt','fl'].filter(m=>mods[m]).map(m=>m.toUpperCase()).join(' ');
-const scoreMul=()=>(mods.hd?1.06:1)*(mods.hr?1.06:1)*(mods.dt?1.12:1)*(mods.fl?1.12:1);
+const modStr=()=>['hd','hr','dt','fl','nf'].filter(m=>mods[m]).map(m=>m.toUpperCase()).join(' ');
+const scoreMul=()=>(mods.hd?1.06:1)*(mods.hr?1.06:1)*(mods.dt?1.12:1)*(mods.fl?1.12:1)*(mods.nf?.5:1);
 const DIFFS=[
   {n:'Facile',gap:480,spc:.72,sld:.42},
   {n:'Normal',gap:320,spc:.95,sld:.44},
@@ -506,7 +540,7 @@ function skipIntro(){
   t0ctx=st-tgtMs/(1000*RATE);
   srcNode.onended=()=>{if(!manualStop&&state==='playing')finish();};
 }
-const elapsed=()=>(AC.currentTime-t0ctx)*1000*RATE;
+const elapsed=()=>(AC.currentTime-t0ctx)*1000*RATE+opt.offset; // offset audio local (Options)
 
 /* ════ DÉMO PROCÉDURALE ════ */
 async function genDemo(){
@@ -809,7 +843,7 @@ let state='menu';
 let mx=W/2,my=H/2,pressing=false;
 let score,combo,maxCombo,hp,n3,n1,n5,nm,errs;
 let vfxList=[],trail=[],kp=[],errsAll=[];
-let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0;
+let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0,wasKiai=false;
 let bass=0,mid=0;
 const board=store.get('board',{}); // scores locaux persistés entre sessions
 const getAcc=()=>{const t=n3+n1+n5+nm;return t?(n3*300+n1*100+n5*50)/(t*300)*100:100;};
@@ -991,7 +1025,9 @@ function alphaHD(el,t){
 const SPRITES={key:'',circ:[],miss:null,ball:[],cursor:null,cursorHi:null,dot:null};
 function _circSprite(col){
   const pad=4,S=Math.ceil(R*2+pad*2)||16,c=document.createElement('canvas');
-  c.width=c.height=S;const g=c.getContext('2d'),m=S/2,[r,g2,b]=h2r(col);
+  c.width=c.height=Math.ceil(S*DPRv);c._S=S;
+  const g=c.getContext('2d');g.scale(DPRv,DPRv);
+  const m=S/2,[r,g2,b]=h2r(col);
   g.beginPath();g.arc(m,m,R,0,PI2);g.fillStyle='#fff';g.fill();
   g.beginPath();g.arc(m,m,R*(1-SKIN.RING_W),0,PI2);g.fillStyle='rgba(20,16,26,.95)';g.fill();
   const dR=R*(1-SKIN.RING_W-SKIN.RIM_W);
@@ -1007,7 +1043,9 @@ function _circSprite(col){
 }
 function _ballSprite(col){
   const S=Math.ceil(R*2+6)||16,c=document.createElement('canvas');
-  c.width=c.height=S;const g=c.getContext('2d'),m=S/2,[r,g2,b]=h2r(col);
+  c.width=c.height=Math.ceil(S*DPRv);c._S=S;
+  const g=c.getContext('2d');g.scale(DPRv,DPRv);
+  const m=S/2,[r,g2,b]=h2r(col);
   const gr=g.createRadialGradient(m-R*.25,m-R*.3,R*.1,m,m,R*.85);
   gr.addColorStop(0,`rgb(${Math.min(255,r+60)},${Math.min(255,g2+60)},${Math.min(255,b+60)})`);
   gr.addColorStop(1,col);
@@ -1017,8 +1055,10 @@ function _ballSprite(col){
 }
 /* Curseur lazer : disque dégradé rose + anneau blanc + halo doux, baked */
 function _cursorSprite(hi){
-  const S=64,c=document.createElement('canvas');c.width=c.height=S;
-  const g=c.getContext('2d'),m=S/2,r0=19;
+  const S=64,c=document.createElement('canvas');
+  c.width=c.height=Math.ceil(S*DPRv);c._S=S;
+  const g=c.getContext('2d');g.scale(DPRv,DPRv);
+  const m=S/2,r0=19;
   const halo=g.createRadialGradient(m,m,r0*.4,m,m,r0*1.6);
   halo.addColorStop(0,hi?'rgba(255,160,200,.5)':'rgba(255,102,170,.38)');halo.addColorStop(1,'rgba(255,102,170,0)');
   g.beginPath();g.arc(m,m,r0*1.6,0,PI2);g.fillStyle=halo;g.fill();
@@ -1031,15 +1071,17 @@ function _cursorSprite(hi){
   return c;
 }
 function _dotSprite(){
-  const S=26,c=document.createElement('canvas');c.width=c.height=S;
-  const g=c.getContext('2d'),m=S/2;
+  const S=26,c=document.createElement('canvas');
+  c.width=c.height=Math.ceil(S*DPRv);c._S=S;
+  const g=c.getContext('2d');g.scale(DPRv,DPRv);
+  const m=S/2;
   const gr=g.createRadialGradient(m,m,0,m,m,m);
   gr.addColorStop(0,'rgba(255,140,190,.85)');gr.addColorStop(1,'rgba(255,102,170,0)');
   g.beginPath();g.arc(m,m,m,0,PI2);g.fillStyle=gr;g.fill();
   return c;
 }
 function buildSprites(){
-  const key=R.toFixed(2)+'|'+(opt.skinBeige?'b':'l');
+  const key=R.toFixed(2)+'|'+(opt.skinBeige?'b':'l')+'|'+DPRv;
   if(SPRITES.key===key||!(R>0))return;
   SPRITES.key=key;
   SPRITES.circ=comboCLR().map(_circSprite);
@@ -1051,7 +1093,7 @@ function buildSprites(){
 function baseCircle(x,y,ci,alpha,num,scale=1){
   const sp=ci==='miss'?SPRITES.miss:SPRITES.circ[ci%4];
   if(!sp)return;
-  const S=sp.width*scale;
+  const S=sp._S*scale;
   cx.save();cx.globalAlpha=alpha;
   cx.drawImage(sp,x-S/2,y-S/2,S,S);
   if(num!=null){
@@ -1114,9 +1156,11 @@ function bakeSliderBody(o,lr,lg,lb,r,g,b){
   for(const pt of p.pts){if(pt.x<x0)x0=pt.x;if(pt.x>x1)x1=pt.x;if(pt.y<y0)y0=pt.y;if(pt.y>y1)y1=pt.y;}
   const w=Math.ceil(x1-x0+pad*2),h=Math.ceil(y1-y0+pad*2);
   if(w*h>1600*1000)return null; // slider géant : repli sur le tracé direct
-  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const c=document.createElement('canvas');
+  c.width=Math.ceil(w*DPRv);c.height=Math.ceil(h*DPRv);
+  o.bodyW=w;o.bodyH=h;
   const g2=c.getContext('2d');
-  g2.translate(pad-x0,pad-y0);g2.lineCap='round';g2.lineJoin='round';
+  g2.scale(DPRv,DPRv);g2.translate(pad-x0,pad-y0);g2.lineCap='round';g2.lineJoin='round';
   const seg=(width,style)=>{g2.beginPath();g2.moveTo(p.pts[0].x,p.pts[0].y);
     for(let i=1;i<p.pts.length;i++)g2.lineTo(p.pts[i].x,p.pts[i].y);
     g2.lineWidth=width;g2.strokeStyle=style;g2.stroke();};
@@ -1142,7 +1186,7 @@ function drawSliderObj(o,el){
   const lr=Math.min(255,r+140),lg=Math.min(255,g+140),lb=Math.min(255,b+140);
   if(snake>=1){
     if(o.bodyCv===undefined)o.bodyCv=bakeSliderBody(o,lr,lg,lb,r,g,b);
-    if(o.bodyCv)cx.drawImage(o.bodyCv,o.bodyX,o.bodyY);
+    if(o.bodyCv)cx.drawImage(o.bodyCv,o.bodyX,o.bodyY,o.bodyW,o.bodyH);
     else{ // repli (slider hors gabarit)
       strokePath(p,1,R*2,'rgba(255,255,255,.95)');
       strokePath(p,1,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
@@ -1199,7 +1243,7 @@ function drawSliderObj(o,el){
     cx.save();
     // slider ball : sprite pré-rendu
     const bs=SPRITES.ball[o.ci%4];
-    if(bs)cx.drawImage(bs,bp.x-bs.width/2,bp.y-bs.height/2);
+    if(bs)cx.drawImage(bs,bp.x-bs._S/2,bp.y-bs._S/2,bs._S,bs._S);
     // follow circle doux : anneau translucide teinté combo (plus de gros cercle blanc dur)
     const frR=folR*Math.max(.2,fs);
     cx.globalAlpha=fol?.5:.18;
@@ -1653,7 +1697,7 @@ function updateGame(el,dt){
         countHit(q,W/2,H/2+12,'#e87aff');}
     }
   }
-  if(hp<=0){fail();return;}
+  if(hp<=0&&!mods.nf){fail();return;} // NF : on ne meurt jamais (score ×0.5)
   if(map.length&&liveStart>=map.length-2){ // fin de map proche seulement : évite le every() à chaque frame
     const lastObj=map[map.length-1];
     const lastEnd=lastObj.k===1?lastObj.t+lastObj.span:lastObj.k===2?lastObj.t+lastObj.dur:lastObj.t;
@@ -1670,7 +1714,7 @@ function show(id){
 }
 function buildPlay(){
   if(!analysis)return;
-  stopPreview();
+  stopPreview();pauseSsVideo();
   computeParams();
   map=genMap();
   score=0;combo=0;maxCombo=0;hp=1;n3=0;n1=0;n5=0;nm=0;lastBurst=0;
@@ -1755,7 +1799,7 @@ function fail(){
   show('sFail');
 }
 function quitToMenu(){
-  stopMusic(false);stopPreview();
+  stopMusic(false);stopPreview();pauseSsVideo();
   if(AC&&AC.state==='suspended')AC.resume();
   state='menu';show('sMenu');
 }
@@ -1780,7 +1824,19 @@ function setBgVideo(f){
   lastVideoFile=f; // mémorisé pour la bibliothèque (re-sélection sans réimport)
   bgVideoUrl=URL.createObjectURL(f);
   v.src=bgVideoUrl;v.muted=true;v.playsInline=true;v.preload='auto';
-  v.addEventListener('loadeddata',()=>{if(v.videoWidth>0)bgVideo=v;},{once:true});
+  v.addEventListener('loadeddata',()=>{
+    if(v.videoWidth<=0)return;
+    bgVideo=v;
+    // la frame 0 est souvent noire : on se cale à ~30 % pour une vraie cover,
+    // puis on régénère la vignette de la bibliothèque (drawBG resync de toute façon)
+    try{v.currentTime=Math.min(30,(v.duration||10)*.3);}catch(e){}
+    v.addEventListener('seeked',()=>{
+      if(curEntry&&curEntry.videoFile===f){
+        curEntry.cover=makeCover(curEntry);
+        renderLibrary();setSsBg(curEntry.cover);
+      }
+    },{once:true});
+  },{once:true});
 }
 async function loadDemo(){
   ensureAC();AC.resume();
@@ -1827,6 +1883,7 @@ async function runAnalysis(){
   startPreview();
 }
 function fillReadyPanels(){
+  setSsVideo(curEntry);
   $('rTitle').textContent=songName;
   $('rArtist').textContent=curEntry&&curEntry.featured?(curEntry.anime+' — '+curEntry.artist):'Importé sur Freyd\'iu';
   $('rInfo').innerHTML='<span>⏱ <b>'+fmtT(analysis.dur*1000)+'</b></span><span>♪ <b>'+(analysis.bpm||'?')+'</b> BPM</span>'+
@@ -1949,7 +2006,7 @@ function makeCover(entry){
   g.fillStyle=vg;g.fillRect(0,0,480,270);
   return c.toDataURL('image/jpeg',.72);
 }
-let ssBgFlip=false;
+let ssBgFlip=false,ssVidUrl=null;
 function setSsBg(cover){
   const a=$('ssBgA'),b=$('ssBgB');
   const show2=ssBgFlip?a:b,hide=ssBgFlip?b:a;
@@ -1957,6 +2014,20 @@ function setSsBg(cover){
   show2.style.backgroundImage=cover?'url('+cover+')':'none';
   show2.style.opacity=1;hide.style.opacity=0; // cross-fade CSS
 }
+/* Map avec vidéo sélectionnée → la vidéo joue derrière le song select (opacité douce) */
+function setSsVideo(entry){
+  const v=$('ssVid');
+  if(entry&&entry.videoFile){
+    if(ssVidUrl)URL.revokeObjectURL(ssVidUrl);
+    ssVidUrl=URL.createObjectURL(entry.videoFile);
+    v.src=ssVidUrl;v.style.display='block';
+    v.currentTime=0;v.play().catch(()=>{});
+  }else{
+    try{v.pause()}catch(e){}
+    v.style.display='none';
+  }
+}
+function pauseSsVideo(){try{$('ssVid').pause()}catch(e){}}
 /* Préview audio : boucle douce au point de preview (40 %) */
 let prevNode=null,prevG=null;
 function startPreview(){
@@ -2154,6 +2225,7 @@ $('bLevels').onclick=()=>{
     $('ssDet').innerHTML='<div class="ss-empty">Sélectionne une map à droite 👉</div>';
   }
   state='ready';show('sReady');renderLibrary();
+  if(analysis){startPreview();setSsVideo(curEntry);} // retour au select : musique + vidéo reprennent
 };
 $('ssQ').oninput=renderLibrary;
 $('ssSort').onchange=renderLibrary;
@@ -2202,7 +2274,9 @@ bindR('oAim','vAim',v=>{opt.aim=v;},v=>v+'%');
 $('oTrail').onchange=e=>{opt.trail=e.target.checked;saveOpt();};
 $('oFx').onchange=e=>{opt.fx=e.target.checked;saveOpt();};
 $('oSnake').onchange=e=>{opt.snake=e.target.checked;saveOpt();};
-$('oBeige').onchange=e=>{opt.skinBeige=e.target.checked;saveOpt();};
+$('oBeige').onchange=e=>{opt.skinBeige=e.target.checked;saveOpt();SPRITES.key='';buildSprites();};
+$('oHd').onchange=e=>{opt.hd2x=e.target.checked;saveOpt();applyDPR();computeParams();};
+bindR('oOff','vOff',v=>{opt.offset=v;},v=>(v>0?'+':'')+v);
 $('bOpt3').onclick=()=>{optRet='sReady';show('sOpt');};
 $('bRandDiff').onclick=()=>{
   const cards=[...document.querySelectorAll('#diffRow .chip')];
@@ -2221,6 +2295,8 @@ $('bGo').onkeydown=e=>{if(e.key==='Enter')$('bGo').click();};
   $('oAim').value=opt.aim;$('vAim').textContent=opt.aim+'%';
   $('oFx').checked=opt.fx;$('oTrail').checked=opt.trail;
   $('oSnake').checked=opt.snake;$('oBeige').checked=opt.skinBeige;
+  $('oHd').checked=opt.hd2x!==false;
+  $('oOff').value=opt.offset||0;$('vOff').textContent=(opt.offset>0?'+':'')+(opt.offset||0);
   document.querySelectorAll('#diffRow .chip').forEach(x=>x.classList.toggle('sel',+x.dataset.d===opt.diff));
   document.querySelectorAll('#modRow .chip').forEach(x=>x.classList.toggle('sel',!!mods[x.dataset.m]));
   if(IS_MOBILE){const f=document.querySelector('#modRow [data-m=fl]');if(f)f.style.display='none';}
@@ -2231,6 +2307,7 @@ let prev=0;
 function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min(48,now-prev);prev=now;
+  cx.setTransform(DPRv,0,0,DPRv,0,0); // base HD : tout le code dessine en px CSS
   if(state==='menu'||state==='loading'||state==='ready'||state==='results'||state==='failed'){
     if(bgVideo&&!bgVideo.paused)bgVideo.pause();
     drawMenuBG();return;}
@@ -2246,6 +2323,8 @@ function loop(now){
   const kiai=isKiai(el)&&el>0;
   if(state==='playing'){
     updateGame(el,dt);
+    if(kiai&&!wasKiai){bgFlash=Math.max(bgFlash,1.1);noiseHit(8000,.25,.18);} // entrée en kiai : flash + cymbale
+    wasKiai=kiai;
     if(kiai)spawnKiai();
   }
   cx.save();
