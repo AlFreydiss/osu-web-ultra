@@ -1136,8 +1136,14 @@ function drawCircleObj(o,el){
   }
   const alpha=mods.hd?alphaHD(el,o.t):clamp((el-(o.t-PRE))/FADE,0,1);
   if(alpha<=0)return;
-  approach(o.x,o.y,col,el,o.t,alpha);
-  baseCircle(o.x,o.y,o.ci,alpha,o.num);
+  // tremblement « trop tôt » : oscillation horizontale amortie ~260 ms
+  let sx=0;
+  if(o.shakeAt&&el-o.shakeAt<260){
+    const st=(el-o.shakeAt)/260;
+    sx=Math.sin((el-o.shakeAt)/22)*5*(1-st);
+  }
+  approach(o.x+sx,o.y,col,el,o.t,alpha);
+  baseCircle(o.x+sx,o.y,o.ci,alpha,o.num);
 }
 
 /* Corps de slider lazer : bordure blanche 12%R, intérieur sombre teinté combo
@@ -1226,8 +1232,13 @@ function drawSliderObj(o,el){
     cx.restore();
   }
   cx.restore();
-  if(!o.hj)approach(o.x,o.y,col,el,o.t,alpha);
-  if(el<o.t||!o.hj)baseCircle(o.x,o.y,o.ci,alpha,o.hj?null:o.num);
+  let hx=0; // tremblement « trop tôt » sur la tête de slider
+  if(o.shakeAt&&el-o.shakeAt<260){
+    const st=(el-o.shakeAt)/260;
+    hx=Math.sin((el-o.shakeAt)/22)*5*(1-st);
+  }
+  if(!o.hj)approach(o.x+hx,o.y,col,el,o.t,alpha);
+  if(el<o.t||!o.hj)baseCircle(o.x+hx,o.y,o.ci,alpha,o.hj?null:o.num);
   if(el>=o.t&&!o.done){
     const ph=clamp((el-o.t)/o.dur,0,o.rep?2:1);
     const pos=o.rep?(ph<=1?ph:2-ph):ph;
@@ -1241,12 +1252,19 @@ function drawSliderObj(o,el){
     const over=fol?1+.25*Math.sin(ft*Math.PI):1; // léger overshoot élastique
     const fs=fol?(.6+.4*easeOut(ft))*over:1-.5*easeOut(ft);
     cx.save();
-    // slider ball : sprite pré-rendu
+    // slider ball : sprite pré-rendu + chevron orienté dans le sens du déplacement
     const bs=SPRITES.ball[o.ci%4];
     if(bs)cx.drawImage(bs,bp.x-bs._S/2,bp.y-bs._S/2,bs._S,bs._S);
-    // follow circle doux : anneau translucide teinté combo (plus de gros cercle blanc dur)
+    const ahead=ptAt(p,clamp(pos+(o.rep&&ph>1?-.025:.025),0,1));
+    const ba=Math.atan2(ahead.y-bp.y,ahead.x-bp.x);
+    cx.save();cx.translate(bp.x,bp.y);cx.rotate(ba);
+    cx.strokeStyle='rgba(255,255,255,.95)';cx.lineWidth=Math.max(2.5,R*.1);cx.lineCap='round';
+    cx.beginPath();cx.moveTo(-R*.1,-R*.26);cx.lineTo(R*.22,0);cx.lineTo(-R*.1,R*.26);cx.stroke();
+    cx.restore();
+    // follow circle : anneau teinté combo qui RESPIRE pendant le tracking
     const frR=folR*Math.max(.2,fs);
-    cx.globalAlpha=fol?.5:.18;
+    const breathe=fol?.46+.12*Math.sin(performance.now()/110):.18;
+    cx.globalAlpha=breathe;
     cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
     cx.strokeStyle=`rgba(${Math.min(255,r+130)},${Math.min(255,g+130)},${Math.min(255,b+130)},1)`;
     cx.lineWidth=fol?Math.max(4,R*.15):2;cx.stroke();
@@ -1616,7 +1634,16 @@ function tryHit(px,py){
   for(const o of cands){
     if(Math.hypot(px-o.x,py-o.y)>hitR)continue;
     const diff=el-o.t,ad=Math.abs(diff);
-    if(ad>W50)continue; // objet expiré qui chevauche : on regarde le candidat suivant (anti note-lock)
+    if(ad>W50){
+      if(diff<0){ // clic EN AVANCE
+        if(ad<=W50*1.6){ // fenêtre de miss osu : trop tôt = raté, combo cassé
+          if(o.k===0){o.miss=true;o.missAt=el;countHit(0,o.x,o.y,SKIN.MISS_RED);}
+          else{o.hj=true;o.hh=false;breakCombo();hp=clamp(hp-.055,0,1);shake=Math.max(shake,4);sfx(0);}
+        }else o.shakeAt=el; // BEAUCOUP trop tôt : la note tremble, pas de pénalité (comme lazer)
+        return;
+      }
+      continue; // objet expiré qui chevauche : candidat suivant (anti note-lock)
+    }
     const q=ad<=W3?300:ad<=W1?100:50;
     errs.push({d:diff,rt:performance.now()});errsAll.push(diff);
     if(o.k===0){o.hit=true;o.hitAt=el;countHit(q,o.x,o.y,comboCol(o.ci));}
@@ -1658,7 +1685,8 @@ function updateGame(el,dt){
         const fol=pressing&&Math.hypot(mx-bp.x,my-bp.y)<R*(2.4+opt.aim/100*.8);
         if(fol){o.ft+=dt;hp=clamp(hp+.0035*dt/16,0,1);
           const tk=Math.floor((el-o.t)/o.span*4*(o.rep+1));
-          if(tk>o.tick){o.tick=tk;tone(560,'sine',.04,.09);}}
+          if(tk>o.tick){o.tick=tk;tone(560,'sine',.04,.09);
+            vfxList.push(new HitFX(bp.x,bp.y,10,comboCol(o.ci),''));}} // petit pop au tick collecté
         if(o.rep&&!o.bounced&&ph>=1){o.bounced=true;
           if(fol){addCombo();tone(700,'sine',.06,.13);}}
         if((el-o.t)>=o.span){o.done=true;o.fEnd=fol;
