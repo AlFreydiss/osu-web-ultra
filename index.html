@@ -808,9 +808,11 @@ async function analyze(buf){
     if(p&&b.t-p.t<70){
       p.s=Math.max(p.s,b.s);
       if(b.b===1)p.b=1;else if(b.b===2&&!p.b)p.b=2;
+      if(b.b===2)p.v=1; // voix présente même si le kick coïncide (sinon tag perdu)
       if(b.h>(p.h||0))p.h=b.h;
       continue;
     }
+    if(b.b===2)b.v=1;
     merged.push(b);
   }
   beats=merged;
@@ -839,6 +841,32 @@ async function analyze(buf){
   }
   for(let i=kiai.length-2;i>=0;i--)
     if(kiai[i+1].s-kiai[i].e<1600){kiai[i].e=kiai[i+1].e;kiai.splice(i+1,1);}
+  // ── Zones VOCALES : enveloppe de la bande médiums (la voix) ──
+  // Sert à ne mapper QUE le chant quand il y a du chant, et à laisser respirer
+  // entre les phrases (pas de notes instrumentales de remplissage).
+  const vEnv=new Float32Array(ne);
+  for(let i=0;i<nb;i++){const ei=Math.min(ne-1,Math.floor(i*wms/envDt));vEnv[ei]+=EM[i];}
+  let vmx=0;for(let i=0;i<ne;i++)vmx=Math.max(vmx,vEnv[i]);
+  for(let i=0;i<ne;i++)vEnv[i]/=vmx||1;
+  const vsm=new Float32Array(ne);
+  for(let i=0;i<ne;i++)vsm[i]=(vEnv[Math.max(0,i-1)]+vEnv[i]+vEnv[Math.min(ne-1,i+1)])/3;
+  const vsorted=[...vsm].sort((a,b)=>a-b);
+  const vmed=vsorted[Math.floor(.55*ne)]||0,vthr=Math.max(.06,vmed*1.35); // au-dessus de la médiane = voix active
+  const vocal=[];let vs=-1;
+  for(let i=0;i<=ne;i++){
+    const on=i<ne&&vsm[i]>vthr;
+    if(on&&vs<0)vs=i;
+    if(!on&&vs>=0){
+      if((i-vs)*envDt>=260)vocal.push({s:vs*envDt,e:i*envDt}); // phrase chantée ≥ 260 ms
+      vs=-1;
+    }
+  }
+  // fusionne les phrases séparées par une micro-respiration (< 360 ms) ; tolérance de
+  // raccord 140 ms autour de chaque phrase pour ne pas couper une attaque/fin de note
+  for(let i=vocal.length-2;i>=0;i--)
+    if(vocal[i+1].s-vocal[i].e<360){vocal[i].e=vocal[i+1].e;vocal.splice(i+1,1);}
+  for(const v of vocal){v.s-=140;v.e+=140;}
+  const hasVocal=vocal.length>=2&&vocal.reduce((a,v)=>a+(v.e-v.s),0)>Math.min(8000,n/sr*1000*.15);
   const hg={};
   for(let i=1;i<beats.length;i++){
     const d=beats[i].t-beats[i-1].t;
@@ -849,7 +877,7 @@ async function analyze(buf){
   let bpm=0,best=0;
   for(const kk in hg)if(hg[kk]>best){best=hg[kk];bpm=+kk;}
   beats=quantizeBeats(beats,bpm);
-  return{beats,env:sm,envDt,kiai,bpm,dur:n/sr,gridOff:beats._off||0};
+  return{beats,env:sm,envDt,kiai,vocal,hasVocal,bpm,dur:n/sr,gridOff:beats._off||0};
 }
 /* Quantification rythmique : cale les onsets sur la grille de demi-temps du BPM détecté.
    La phase de la grille est cherchée par vote (QUANT_PHASES candidates), puis chaque onset
@@ -877,12 +905,12 @@ function quantizeBeats(beats,bpm){
   const out=beats.map(b=>{
     const g=bestOff+Math.round((b.t-bestOff)/sub)*sub;
     // g>=0 : l'affinage de phase peut rendre bestOff négatif -> jamais d'objet à t<0 (auto-miss au lead-in)
-    return g>=0&&Math.abs(b.t-g)<tol?{t:g,s:b.s,b:b.b,h:b.h}:{t:b.t,s:b.s,b:b.b,h:b.h};
+    return g>=0&&Math.abs(b.t-g)<tol?{t:g,s:b.s,b:b.b,h:b.h,v:b.v}:{t:b.t,s:b.s,b:b.b,h:b.h,v:b.v};
   }).sort((a,b2)=>a.t-b2.t);
   const ded=[];
   for(const b of out){
     const p=ded[ded.length-1];
-    if(p&&b.t-p.t<sub*.45){p.s=Math.max(p.s,b.s);p.b=p.b||b.b;if(b.h>(p.h||0))p.h=b.h;continue;}
+    if(p&&b.t-p.t<sub*.45){p.s=Math.max(p.s,b.s);p.b=p.b||b.b;if(b.v)p.v=1;if(b.h>(p.h||0))p.h=b.h;continue;}
     ded.push(b);
   }
   ded._off=bestOff; // phase de la grille : sert à caler les combos sur les MESURES
@@ -891,6 +919,11 @@ function quantizeBeats(beats,bpm){
 function isKiai(t){
   if(!analysis)return false;
   for(const s of analysis.kiai)if(t>=s.s&&t<s.e)return true;
+  return false;
+}
+function inVocal(t){
+  if(!analysis||!analysis.vocal)return false;
+  for(const v of analysis.vocal)if(t>=v.s&&t<v.e)return true;
   return false;
 }
 
@@ -954,11 +987,25 @@ function genMap(){
   const padB=Math.max(H-(PF.oy+OSU_H*PF.s)+R+6,R+58);
   // Sélection rythmique : dans chaque fenêtre on garde l'onset le plus FORT
   // (pas le premier arrivé) → la map colle bien mieux aux accents de la musique.
+  // courte respiration ENTRE deux phrases chantées (< 3 s) : on n'y met rien.
+  // Avant la 1re / après la dernière phrase, ou pause longue = section instrumentale → on garde.
+  const V=analysis.vocal;
+  const interBreath=t=>{
+    if(!V||V.length<2)return false;
+    for(let i=0;i<V.length-1;i++)if(t>=V[i].e&&t<V[i+1].s)return(V[i+1].s-V[i].e)<3000;
+    return false;
+  };
   const sel=[];let last=-9999;
   for(const b of analysis.beats){
     // quasi-silence (respiration, pause instrumentale) : pas de notes parasites
     const ei=Math.min(analysis.env.length-1,Math.floor(b.t/analysis.envDt));
     if(analysis.env[ei]<.10&&b.s<2)continue;
+    // morceau chanté : on suit la VOIX. Dans une phrase → seulement les syllabes
+    // (pas le kick/instru entre les mots) ; entre deux phrases → silence.
+    if(analysis.hasVocal){
+      if(inVocal(b.t)){if(!(b.b===2||b.v||b.h>0)&&b.s<2.2)continue;}
+      else if(interBreath(b.t))continue;
+    }
     const g=isKiai(b.t)?d.gap/(opt.diff>=2?1.5:1.32):d.gap; // kiai plus dense en Difficile/Expert
     if(b.t-last>=g){sel.push(b);last=b.t;}
     else if(sel.length&&b.s>sel[sel.length-1].s*1.25&&
