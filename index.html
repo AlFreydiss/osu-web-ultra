@@ -360,9 +360,10 @@ body.playing{cursor:none}
   <div class="orow"><label>Volume musique</label><input type="range" id="oVm" min="0" max="100" value="80"><span class="val" id="vVm">80%</span></div>
   <div class="orow"><label>Volume effets</label><input type="range" id="oVs" min="0" max="100" value="90"><span class="val" id="vVs">90%</span></div>
   <p class="ogrp">🎯 Gameplay</p>
-  <div class="orow"><label>Vitesse d'approche (AR)</label><input type="range" id="oAr" min="3" max="10" step="0.5" value="8"><span class="val" id="vAr">8</span></div>
-  <div class="orow"><label>Taille des cercles (CS)</label><input type="range" id="oCs" min="2" max="6" step="0.5" value="4"><span class="val" id="vCs">4</span></div>
-  <div class="orow"><label>Précision exigée (OD)</label><input type="range" id="oOd" min="2" max="10" step="0.5" value="7"><span class="val" id="vOd">7</span></div>
+  <div class="orow"><label>Touches de jeu (K1 / K2)</label>
+    <button class="btn chip" id="oK1" style="min-width:46px">Z</button>
+    <button class="btn chip" id="oK2" style="min-width:46px">X</button>
+    <span class="val" style="width:auto;font-size:10.5px;color:#ffffff55">clique puis presse une touche</span></div>
   <div class="orow"><label>Aide à la visée</label><input type="range" id="oAim" min="0" max="100" value="35"><span class="val" id="vAim">35%</span></div>
   <div class="orow"><label>Décalage audio (ms)</label><input type="range" id="oOff" min="-80" max="80" step="5" value="0"><span class="val" id="vOff">0</span></div>
   <p class="ogrp">✨ Visuel</p>
@@ -446,6 +447,51 @@ const FEATURED=[
   {id:'tr-ed1',anime:'Tokyo Revengers',name:'Koko de Iki o Shite',artist:'eill',color:'#dc2626',emoji:'🛵',url:'blind-test/tr-ed1.mp4'},
   {id:'mha-ed2',anime:'My Hero Academia',name:'Datte Atashi no Hero',artist:'LiSA',color:'#57c785',emoji:'🦸',url:'blind-test/mha-ed2.mp4'},
   {id:'fz-ed1',anime:'Fate/Zero',name:'Memoria',artist:'Kalafina',color:'#6563DE',emoji:'🌙',url:'blind-test/fz-ed1.mp4'},
+  // ── extension : les classiques du bucket ──
+  {id:'op-op2',anime:'One Piece',name:'Believe',artist:'Folder5',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op2.mp4'},
+  {id:'op-op3',anime:'One Piece',name:'Hikari e',artist:'The Babystars',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op3.mp4'},
+  {id:'op-op4',anime:'One Piece',name:'Bon Voyage !',artist:'Bon-Bon Blanco',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op4.mp4'},
+  {id:'op-op5',anime:'One Piece',name:'Kokoro no Chizu',artist:'BOYSTYLE',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op5.mp4'},
+  {id:'op-op11',anime:'One Piece',name:'Share the World',artist:'TVXQ',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op11.mp4'},
+  {id:'op-op13',anime:'One Piece',name:'One Day',artist:'The Rootless',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op13.mp4'},
+  {id:'op-op14',anime:'One Piece',name:'Fight Together',artist:'Namie Amuro',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op14.mp4'},
+  {id:'op-op15',anime:'One Piece',name:'We Go !',artist:'Hiroshi Kitadani',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op15.mp4'},
+  {id:'op-op16',anime:'One Piece',name:'Hands Up !',artist:'Kota Shinzato',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op16.mp4'},
+  {id:'op-op17',anime:'One Piece',name:'Wake up !',artist:'AAA',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op17.mp4'},
+  {id:'op-op20',anime:'One Piece',name:'Hope',artist:'Namie Amuro',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op20.mp4'},
+  {id:'op-op21',anime:'One Piece',name:'Super Powers',artist:'V6',color:'#d97706',emoji:'🏴‍☠️',url:'blind-test/op-op21.mp4'},
+  {id:'aot-op1',anime:'Attack on Titan',name:'Guren no Yumiya',artist:'Linked Horizon',color:'#8a9a5b',emoji:'🗡️',url:'blind-test/aot-op1.mp4'},
+  {id:'aot-s2-op',anime:'Attack on Titan',name:'Shinzou wo Sasageyo',artist:'Linked Horizon',color:'#8a9a5b',emoji:'🗡️',url:'blind-test/aot-s2-op.mp4'},
+  {id:'jjk-op1',anime:'Jujutsu Kaisen',name:'Kaikai Kitan',artist:'Eve',color:'#8B6CFF',emoji:'👁️',url:'blind-test/jjk-op1.mp4'},
+  {id:'csm-op1',anime:'Chainsaw Man',name:'KICK BACK',artist:'Kenshi Yonezu',color:'#E63946',emoji:'🪚',url:'blind-test/csm-op1.mp4'},
+  {id:'dandadan-op1',anime:'Dandadan',name:'Otonoke',artist:'Creepy Nuts',color:'#FF8068',emoji:'👻',url:'blind-test/dandadan-op1.mp4'},
+  {id:'ns-op3',anime:'Naruto Shippuden',name:'Blue Bird',artist:'Ikimonogakari',color:'#FF7A1A',emoji:'🍥',url:'blind-test/ns-op3.mp4'},
+  {id:'ns-op16',anime:'Naruto Shippuden',name:'Silhouette',artist:'KANA-BOON',color:'#FF7A1A',emoji:'🍥',url:'blind-test/ns-op16.mp4'},
+  {id:'nge-op1',anime:'Evangelion',name:"A Cruel Angel's Thesis",artist:'Yoko Takahashi',color:'#7d3ee8',emoji:'🤖',url:'blind-test/nge-op1.mp4'},
+  {id:'sg-op1',anime:'Steins;Gate',name:'Hacking to the Gate',artist:'Kanako Itou',color:'#62D8E8',emoji:'⏰',url:'blind-test/sg-op1.mp4'},
+  {id:'tg-op1',anime:'Tokyo Ghoul',name:'Unravel',artist:'TK',color:'#C84B4B',emoji:'🎭',url:'blind-test/tg-op1.mp4'},
+  {id:'fmab-op1',anime:'FMA: Brotherhood',name:'Again',artist:'YUI',color:'#b45309',emoji:'⚗️',url:'blind-test/fmab-op1.mp4'},
+  {id:'dn-op1',anime:'Death Note',name:'The World',artist:'Nightmare',color:'#4b5563',emoji:'📓',url:'blind-test/dn-op1.mp4'},
+  {id:'sao-op1',anime:'Sword Art Online',name:'Crossing Field',artist:'LiSA',color:'#55A8FF',emoji:'⚔️',url:'blind-test/sao-op1.mp4'},
+  {id:'mha-op1',anime:'My Hero Academia',name:'The Day',artist:'Porno Graffitti',color:'#57c785',emoji:'🦸',url:'blind-test/mha-op1.mp4'},
+  {id:'kaguya-op1',anime:'Kaguya-sama',name:'Love Dramatic',artist:'Masayuki Suzuki',color:'#E8556D',emoji:'💘',url:'blind-test/kaguya-op1.mp4'},
+  {id:'jojo-op2',anime:"JoJo's Bizarre Adventure",name:'Bloody Stream',artist:'Coda',color:'#a06bff',emoji:'⭐',url:'blind-test/jojo-op2.mp4'},
+  {id:'ngnl-op1',anime:'No Game No Life',name:'This Game',artist:'Konomi Suzuki',color:'#F2788F',emoji:'🎲',url:'blind-test/ngnl-op1.mp4'},
+  {id:'parasyte-op1',anime:'Parasyte',name:'Let Me Hear',artist:'Fear, and Loathing in Las Vegas',color:'#6EE76E',emoji:'🧬',url:'blind-test/parasyte-op1.mp4'},
+  {id:'tpn-op1',anime:'The Promised Neverland',name:'Touch Off',artist:'UVERworld',color:'#6FCFB6',emoji:'🌿',url:'blind-test/tpn-op1.mp4'},
+  {id:'vinland-op1',anime:'Vinland Saga',name:'MUKANJYO',artist:'Survive Said The Prophet',color:'#1f6f54',emoji:'🪓',url:'blind-test/vinland-op1.mp4'},
+  {id:'ve-op1',anime:'Violet Evergarden',name:'Sincerely',artist:'TRUE',color:'#8FB3E8',emoji:'✉️',url:'blind-test/ve-op1.mp4'},
+  {id:'vivy-op1',anime:'Vivy',name:'Sing My Pleasure',artist:'Kairi Yagi',color:'#62D8E8',emoji:'🎤',url:'blind-test/vivy-op1.mp4'},
+  {id:'hxh-op1',anime:'Hunter x Hunter',name:'Departure !',artist:'Masatoshi Ono',color:'#16a34a',emoji:'🎣',url:'blind-test/hxh-op1.mp4'},
+  {id:'fz-op1',anime:'Fate/Zero',name:'Oath Sign',artist:'LiSA',color:'#C9A227',emoji:'🌙',url:'blind-test/fz-op1.mp4'},
+  {id:'bc-op10',anime:'Black Clover',name:'Black Catcher',artist:'Vickeblanka',color:'#69C46B',emoji:'🍀',url:'blind-test/bc-op10.mp4'},
+  {id:'dbz-op1',anime:'Dragon Ball Z',name:'Cha-La Head-Cha-La',artist:'Hironobu Kageyama',color:'#FFA133',emoji:'🐉',url:'blind-test/dbz-op1.mp4'},
+  {id:'ylia-op1',anime:'Your Lie in April',name:'Hikaru Nara',artist:'Goose house',color:'#ff6f9c',emoji:'🎹',url:'blind-test/ylia-op1.mp4'},
+  {id:'bleach-op3',anime:'Bleach',name:'Ichirin no Hana',artist:'High and Mighty Color',color:'#0e7490',emoji:'⚔️',url:'blind-test/bleach-op3.mp4'},
+  {id:'bleach-op13',anime:'Bleach',name:'Ranbu no Melody',artist:'SID',color:'#0e7490',emoji:'⚔️',url:'blind-test/bleach-op13.mp4'},
+  {id:'kakegurui-op1',anime:'Kakegurui',name:'Deal with the Devil',artist:'Tia',color:'#dc2626',emoji:'🎰',url:'blind-test/kakegurui-op1.mp4'},
+  {id:'franxx-op1',anime:'Darling in the FranXX',name:'Kiss of Death',artist:'Mika Nakashima',color:'#F2788F',emoji:'🤖',url:'blind-test/franxx-op1.mp4'},
+  {id:'mirai-nikki-op1',anime:'Mirai Nikki',name:'Kuusou Mesorogiwi',artist:'Yousei Teikoku',color:'#7d3ee8',emoji:'📱',url:'blind-test/mirai-nikki-op1.mp4'},
 ];
 /* ════ LAYOUT — playfield osu! 512×384, ratio 4:3 centré ════ */
 const OSU_W=512,OSU_H=384,MARGIN_TOP=.02,MARGIN_BOT=.03;
@@ -489,7 +535,7 @@ const h2r=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.sli
 const fmtT=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 
 /* ════ OPTIONS & MODS ════ */
-const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.25,aim:35,offset:0,trail:true,fx:true,snake:true,skinBeige:false,hd2x:true,diff:1};
+const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.25,aim:35,offset:0,k1:'z',k2:'x',trail:true,fx:true,snake:true,skinBeige:false,hd2x:true,diff:1};
 const mods={hd:false,hr:false,dt:false,fl:false,nf:false};
 Object.assign(opt,store.get('opt',{}));
 Object.assign(mods,store.get('mods',{}));
@@ -501,16 +547,19 @@ if(IS_MOBILE)mods.fl=false; // FL injouable au doigt : le doigt cache le trou de
 const saveOpt=()=>{store.set('opt',opt);store.set('mods',mods);};
 const modStr=()=>['hd','hr','dt','fl','nf'].filter(m=>mods[m]).map(m=>m.toUpperCase()).join(' ');
 const scoreMul=()=>(mods.hd?1.06:1)*(mods.hr?1.06:1)*(mods.dt?1.12:1)*(mods.fl?1.12:1)*(mods.nf?.5:1);
+/* AR / CS / OD appartiennent au NIVEAU (taille/vitesse moyennes bien réglées),
+   plus aux options — comme les vraies maps osu. */
 const DIFFS=[
-  {n:'Facile',gap:480,spc:.72,sld:.42},
-  {n:'Normal',gap:320,spc:.95,sld:.44},
-  {n:'Difficile',gap:215,spc:1.15,sld:.4},
-  {n:'Expert',gap:150,spc:1.3,sld:.32}
+  {n:'Facile',   gap:480,spc:.72,sld:.42,ar:5.5,cs:3.4,od:5},
+  {n:'Normal',   gap:320,spc:.95,sld:.44,ar:7.2,cs:3.9,od:6.5},
+  {n:'Difficile',gap:215,spc:1.15,sld:.4,ar:8.6,cs:4.2,od:7.5},
+  {n:'Expert',   gap:150,spc:1.3,sld:.32,ar:9.4,cs:4.6,od:8.5}
 ];
 let PRE=750,FADE=400,W3=37.5,W1=83.5,W50=129.5,RPS=1.1,R=40,CS_EFF=4,RATE=1;
 function computeParams(){
   computePlayfield();
-  let ar=opt.ar,od=opt.od,cs=opt.cs;
+  const d=DIFFS[opt.diff];
+  let ar=d.ar,od=d.od,cs=d.cs;
   if(mods.hr){ar=Math.min(10,ar*1.4);od=Math.min(10,od*1.4);cs=Math.min(6,cs*1.08);} // HR ne touche presque pas la taille
   CS_EFF=cs;
   // Formules officielles osu! — voir https://osu.ppy.sh/wiki (AR / OD / CS)
@@ -528,14 +577,23 @@ let AC=null,masterG,musicG,sfxG,analyser,fftData,srcNode=null,t0ctx=0,manualStop
 let songBuf=null,songName='',analysis=null;
 let bgVideo=null,bgVideoUrl=null,loadErrTimer=0;
 const LEAD=2.0;
+let musicFilter=null;
 function ensureAC(){
   if(AC)return;
   AC=new(window.AudioContext||window.webkitAudioContext)();
-  masterG=AC.createGain();masterG.connect(AC.destination);
+  // compresseur doux sur le master : son plus propre, pas d'écrêtage sur les kiai
+  const comp=AC.createDynamicsCompressor();
+  comp.threshold.value=-14;comp.knee.value=22;comp.ratio.value=5;
+  comp.attack.value=.004;comp.release.value=.22;
+  comp.connect(AC.destination);
+  masterG=AC.createGain();masterG.connect(comp);
   musicG=AC.createGain();musicG.connect(masterG);
   sfxG=AC.createGain();sfxG.connect(masterG);sfxG.gain.value=opt.volS;
+  // lowpass sur la musique : grand ouvert en jeu, balayé vers le grave au fail
+  musicFilter=AC.createBiquadFilter();musicFilter.type='lowpass';musicFilter.frequency.value=19500;
+  musicFilter.connect(musicG);
   analyser=AC.createAnalyser();analyser.fftSize=256;analyser.smoothingTimeConstant=.78;
-  analyser.connect(musicG);
+  analyser.connect(musicFilter);
   fftData=new Uint8Array(analyser.frequencyBinCount);
 }
 function tone(f,type='sine',dur=.1,vol=.22){
@@ -576,6 +634,8 @@ function startMusic(){
   manualStop=false;
   musicG.gain.cancelScheduledValues(AC.currentTime);
   musicG.gain.setValueAtTime(opt.volM,AC.currentTime);
+  musicFilter.frequency.cancelScheduledValues(AC.currentTime);
+  musicFilter.frequency.setValueAtTime(19500,AC.currentTime); // filtre rouvert après un fail
   srcNode=AC.createBufferSource();srcNode.buffer=songBuf;
   srcNode.playbackRate.value=RATE;
   srcNode.connect(analyser);
@@ -884,7 +944,7 @@ function genMap(){
         hh:false,hj:false,ft:0,fEnd:false,done:false,tick:0,bounced:false});
       if(rep){x=tx;y=ty;}else{x=ex;y=ey;ang=Math.atan2(ey-ty,ex-tx);}
     }else{
-      objs.push({k:0,t:b.t,x:tx,y:ty,num,ci,hit:false,miss:false});
+      objs.push({k:0,t:b.t,x:tx,y:ty,num,ci,hit:false,miss:false,kj:kiai?1:0});
       x=tx;y=ty;
     }
     num++;if(num>9){num=1;ci=(ci+1)%CLR.length;}
@@ -1209,6 +1269,12 @@ function drawCircleObj(o,el){
   }
   approach(o.x+sx,o.y,col,el,o.t,alpha);
   baseCircle(o.x+sx,o.y,o.ci,alpha,o.num);
+  if(o.kj){ // note de section kiai : fin halo blanc pulsé au beat
+    const bms=analysis&&analysis.bpm?60000/analysis.bpm:600;
+    cx.save();cx.globalAlpha=alpha*(.16+.12*Math.max(0,1-(el%bms)/bms*2));
+    cx.beginPath();cx.arc(o.x+sx,o.y,R*1.07,0,PI2);
+    cx.strokeStyle='#fff';cx.lineWidth=Math.max(2,R*.06);cx.stroke();cx.restore();
+  }
 }
 
 /* Corps de slider lazer : bordure blanche 12%R, intérieur sombre teinté combo
@@ -1309,7 +1375,7 @@ function drawSliderObj(o,el){
     const pos=o.rep?(ph<=1?ph:2-ph):ph;
     const bp=ptAt(p,pos);
     const folR=R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8);
-    const fol=pressing&&Math.hypot(mx-bp.x,my-bp.y)<folR;
+    const fol=(pressing&&Math.hypot(mx-bp.x,my-bp.y)<folR)||(o.folLast!==undefined&&el-o.folLast<80);
     // follow circle : pop élastique à l'accroche, rétrécit au lâcher
     if(fol&&!o.folOn){o.folOn=true;o.folT=el;}
     if(!fol&&o.folOn){o.folOn=false;o.folT=el;}
@@ -1691,32 +1757,65 @@ function initMenuTris(){
     pink:Math.random()<.6,
   })));
 }
+let lastGradeCol='#ffee44';
 function drawMenuBG(){
   menuT+=.016;
   if(!menuTris)initMenuTris();
-  const gk=W+'x'+H;
+  // fond selon l'écran : menu violet, ÉCHEC rouge sombre, RÉSULTATS teinté du grade
+  const mode=state==='failed'?'fail':state==='results'?'win':'menu';
+  const gk=W+'x'+H+mode+(mode==='win'?lastGradeCol:'');
   if(menuGradKey!==gk){
     menuGrad=cx.createRadialGradient(W/2,H*.42,0,W/2,H*.42,Math.max(W,H)*.78);
-    menuGrad.addColorStop(0,'#1b1030');menuGrad.addColorStop(.55,'#0e0820');menuGrad.addColorStop(1,'#050309');
+    if(mode==='fail'){
+      menuGrad.addColorStop(0,'#2a0a14');menuGrad.addColorStop(.55,'#160510');menuGrad.addColorStop(1,'#070205');
+    }else if(mode==='win'){
+      const[r,g,b]=h2r(lastGradeCol);
+      menuGrad.addColorStop(0,`rgb(${r*.16|0},${g*.16|0},${b*.16|0})`);
+      menuGrad.addColorStop(.55,'#10081e');menuGrad.addColorStop(1,'#050309');
+    }else{
+      menuGrad.addColorStop(0,'#1b1030');menuGrad.addColorStop(.55,'#0e0820');menuGrad.addColorStop(1,'#050309');
+    }
     menuGradKey=gk;
   }
   cx.fillStyle=menuGrad;cx.fillRect(0,0,W,H);
   for(let li=0;li<MENU_LAYERS.length;li++){
     const L=MENU_LAYERS[li];
-    cx.globalAlpha=L.a;
+    cx.globalAlpha=mode==='fail'?L.a*.8:L.a;
     for(const t of menuTris[li]){
-      t.y-=L.sp*.0016;t.rot+=t.vr;            // montée lente + rotation infime
+      if(mode==='fail')t.y+=L.sp*.0011;        // échec : les triangles TOMBENT, lourds
+      else t.y-=L.sp*(mode==='win'?.0024:.0016); // victoire : montée plus vive, célébration
+      t.rot+=t.vr;
       if(t.y<-.15){t.y=1.15;t.x=Math.random()*1.2-.1;}
+      if(t.y>1.15){t.y=-.15;t.x=Math.random()*1.2-.1;}
       const x=t.x*W,y=t.y*H,s=t.s;
       cx.save();cx.translate(x,y);cx.rotate(t.rot);
       cx.beginPath();cx.moveTo(0,-s*.58);cx.lineTo(s*.5,s*.29);cx.lineTo(-s*.5,s*.29);cx.closePath();
-      cx.fillStyle=t.pink?'#ff66aa':'#7d3ee8';
+      cx.fillStyle=mode==='fail'?(t.pink?'#8a1430':'#3a0a18')
+        :mode==='win'?(t.pink?lastGradeCol:'#7d3ee8')
+        :(t.pink?'#ff66aa':'#7d3ee8');
       cx.fill();cx.restore();
     }
   }
   cx.globalAlpha=1;
   // curseur custom de l'écran titre (sprite + traînée, masqué par CSS cursor:none)
   if(state==='menu'&&!REDUCED_MOTION&&SPRITES.cursor)drawCursor();
+}
+/* Vignette rouge progressive façon osu : monte quand la vie passe sous 50 %, pulse */
+let vigGrad=null,vigKey='';
+function drawVignette(){
+  if(hp>=.5)return;
+  const gk=W+'x'+H;
+  if(vigKey!==gk){
+    vigGrad=cx.createRadialGradient(W/2,H/2,Math.min(W,H)*.32,W/2,H/2,Math.max(W,H)*.72);
+    vigGrad.addColorStop(0,'rgba(180,20,40,0)');vigGrad.addColorStop(1,'rgba(180,20,40,1)');
+    vigKey=gk;
+  }
+  const danger=(0.5-hp)/0.5; // 0 → 1
+  const pulse=hp<.22?.08*Math.sin(performance.now()/180):0;
+  cx.save();
+  cx.globalAlpha=Math.min(.5,danger*.42+pulse);
+  cx.fillStyle=vigGrad;cx.fillRect(0,0,W,H);
+  cx.restore();
 }
 
 /* ════ LOGIQUE ════ */
@@ -1778,7 +1877,9 @@ function updateGame(el,dt){
         const ph=clamp((el-o.t)/o.dur,0,o.rep?2:1);
         const pos=o.rep?(ph<=1?ph:2-ph):ph;
         const bp=ptAt(o.path,pos);
-        const fol=pressing&&Math.hypot(mx-bp.x,my-bp.y)<R*(2.4+opt.aim/100*.8);
+        const folNow=pressing&&Math.hypot(mx-bp.x,my-bp.y)<R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8);
+        if(folNow)o.folLast=el;
+        const fol=folNow||(o.folLast!==undefined&&el-o.folLast<80); // grâce de 80 ms : un micro-écart ne casse pas le suivi (comme osu)
         if(fol){o.ft+=dt;hp=clamp(hp+.0035*dt/16,0,1);
           const tk=Math.floor((el-o.t)/o.span*4*(o.rep+1));
           if(tk>o.tick){o.tick=tk;tone(560,'sine',.04,.09);
@@ -1871,7 +1972,7 @@ function finish(){
     const v=errsAll.reduce((s,d)=>s+(d-m)*(d-m),0)/errsAll.length;
     ur=Math.round(Math.sqrt(v)*10);
   }
-  $('gGrade').textContent=g;$('gGrade').style.color=c;
+  $('gGrade').textContent=g;$('gGrade').style.color=c;lastGradeCol=c;
   $('gSub').textContent=DIFFS[opt.diff].n+(modStr()?' · '+modStr():'')+' · UR '+ur;
   $('gStats').innerHTML=
     '<span>Score</span><b>'+score.toLocaleString('fr-FR')+'</b>'+
@@ -1915,10 +2016,26 @@ function finish(){
     }
     hc.fillStyle='rgba(255,255,255,.5)';hc.fillRect(149,4,2,48);
   }
-  tone(660,'sine',.3,.15);setTimeout(()=>tone(880,'sine',.4,.15),180);
+  // arpège de fin selon le grade : triomphal pour SS/S, doux pour le reste
+  const arp=g==='SS'||g==='S'?[660,880,1108,1318,1760]:g==='A'?[523,659,784,1046]:g==='B'?[494,587,740]:[392,494];
+  arp.forEach((f,i)=>setTimeout(()=>tone(f,'sine',.32,.13),i*110));
 }
 function fail(){
-  state='failed';stopMusic(true);
+  state='failed';
+  // la musique « part en couille » comme osu : ralentit + s'étouffe (lowpass) puis meurt
+  if(srcNode){
+    manualStop=true;srcNode.onended=null;
+    try{
+      const t=AC.currentTime;
+      srcNode.playbackRate.setValueAtTime(srcNode.playbackRate.value,t);
+      srcNode.playbackRate.linearRampToValueAtTime(.22,t+1.4);
+      musicFilter.frequency.setValueAtTime(19500,t);
+      musicFilter.frequency.exponentialRampToValueAtTime(180,t+1.25);
+      musicG.gain.setTargetAtTime(0,t+1.2,.45);
+      const s=srcNode;setTimeout(()=>{try{s.stop()}catch(e){}},2800);
+    }catch(e){}
+    srcNode=null;
+  }
   tone(220,'sawtooth',.6,.18);setTimeout(()=>tone(160,'sawtooth',.8,.15),250);
   show('sFail');
 }
@@ -2038,7 +2155,7 @@ function diffColor(st){
 }
 function starsOf(d){
   const base=[1.6,2.6,3.9,5.1][d];
-  return Math.max(.5,base+(opt.ar-8)*.12+(opt.od-7)*.08+(mods.hr?.55:0)+(mods.dt?.75:0));
+  return Math.max(.5,base+(mods.hr?.55:0)+(mods.dt?.75:0));
 }
 const STAT_COLORS=['#4FC0FF','#88E55C','#FFD12B','#FF8068','#FF5E5E','#a06bff','#66CCFF'];
 function updatePreview(){
@@ -2050,10 +2167,10 @@ function updatePreview(){
   $('rPrev').textContent=DIFFS[opt.diff].n+' mappée par Freyd\'isu'+
     (scoreMul()>1?' · score ×'+scoreMul().toFixed(2):'');
   /* rangée de stats façon lazer : trait coloré au-dessus de chaque valeur */
-  const hpD=(2+opt.diff*1.5).toFixed(1);
+  const dd=DIFFS[opt.diff],hpD=(2+opt.diff*1.5).toFixed(1);
   const rows=[['Cercles',c],['Sliders',s],['Spinners',p],['Taille des cercles',CS_EFF.toFixed(1)],
-    ['Vitesse d\'approche',(mods.hr?Math.min(10,opt.ar*1.4):opt.ar).toFixed(1)],
-    ['Précision',(mods.hr?Math.min(10,opt.od*1.4):opt.od).toFixed(1)],['Drain de santé',hpD]];
+    ['Vitesse d\'approche',(mods.hr?Math.min(10,dd.ar*1.4):dd.ar).toFixed(1)],
+    ['Précision',(mods.hr?Math.min(10,dd.od*1.4):dd.od).toFixed(1)],['Drain de santé',hpD]];
   $('rStats').innerHTML=rows.map((r,i)=>
     '<div class="ss-stat"><div class="tick" style="background:'+STAT_COLORS[i]+'"></div>'+
     '<div class="v">'+r[1]+'</div><div class="l">'+r[0]+'</div></div>').join('');
@@ -2315,8 +2432,9 @@ addEventListener('touchmove',e=>{
 addEventListener('touchend',()=>pressing=false);
 addEventListener('keydown',e=>{
   if(e.repeat)return;
-  if((e.key==='z'||e.key==='Z'||e.key==='x'||e.key==='X')&&state==='playing'){
-    const ki=(e.key==='z'||e.key==='Z')?0:1;
+  const gk=e.key.toLowerCase();
+  if((gk===opt.k1||gk===opt.k2)&&state==='playing'){
+    const ki=gk===opt.k1?0:1;
     keysOv[ki].on=true;keysOv[ki].n++;clickTimes.push(performance.now());
     pressing=true;tryHit(mx,my);}
   if(e.key==='Escape'){
@@ -2333,8 +2451,28 @@ addEventListener('keydown',e=>{
   if(e.key==='Enter'&&state==='results'&&e.target.tagName!=='INPUT')$('bRetry3').click();
 });
 addEventListener('keyup',e=>{
-  if('zxZX'.includes(e.key)){pressing=false;keysOv[(e.key==='z'||e.key==='Z')?0:1].on=false;}
+  const gk=e.key.toLowerCase();
+  if(gk===opt.k1||gk===opt.k2){pressing=false;keysOv[gk===opt.k1?0:1].on=false;}
 });
+/* Remap des touches : clic sur K1/K2 dans Options puis presse une touche */
+function bindKeyCapture(btnId,slot){
+  $(btnId).onclick=()=>{
+    $(btnId).textContent='…';
+    const cap=ev=>{
+      ev.preventDefault();ev.stopPropagation();
+      const k=ev.key.toLowerCase();
+      if(k.length===1&&!' ²`'.includes(k)&&k!==(slot==='k1'?opt.k2:opt.k1)){
+        opt[slot]=k;saveOpt();
+        keysOv[slot==='k1'?0:1].lbl=k.toUpperCase();
+      }
+      $(btnId).textContent=(opt[slot]||'?').toUpperCase();
+      removeEventListener('keydown',cap,true);
+    };
+    addEventListener('keydown',cap,true);
+  };
+}
+bindKeyCapture('oK1','k1');bindKeyCapture('oK2','k2');
+keysOv[0].lbl=(opt.k1||'z').toUpperCase();keysOv[1].lbl=(opt.k2||'x').toUpperCase();
 addEventListener('blur',()=>{if(state==='playing')doPause();});
 
 /* ════ UI ════ */
@@ -2390,9 +2528,6 @@ function bindR(id,vid,fn,fmt){
 }
 bindR('oVm','vVm',v=>{opt.volM=v/100;if(musicG&&state==='playing')musicG.gain.setTargetAtTime(opt.volM,AC.currentTime,.05);},v=>v+'%');
 bindR('oVs','vVs',v=>{opt.volS=v/100;if(sfxG)sfxG.gain.value=opt.volS;},v=>v+'%');
-bindR('oAr','vAr',v=>{opt.ar=v;},v=>v);
-bindR('oCs','vCs',v=>{opt.cs=v;},v=>v);
-bindR('oOd','vOd',v=>{opt.od=v;},v=>v);
 bindR('oDim','vDim',v=>{opt.dim=v/100;},v=>v+'%');
 bindR('oAim','vAim',v=>{opt.aim=v;},v=>v+'%');
 $('oTrail').onchange=e=>{opt.trail=e.target.checked;saveOpt();};
@@ -2412,10 +2547,8 @@ $('bGo').onkeydown=e=>{if(e.key==='Enter')$('bGo').click();};
 (function syncUI(){
   $('oVm').value=Math.round(opt.volM*100);$('vVm').textContent=Math.round(opt.volM*100)+'%';
   $('oVs').value=Math.round(opt.volS*100);$('vVs').textContent=Math.round(opt.volS*100)+'%';
-  $('oAr').value=opt.ar;$('vAr').textContent=opt.ar;
-  $('oCs').value=opt.cs;$('vCs').textContent=opt.cs;
-  $('oOd').value=opt.od;$('vOd').textContent=opt.od;
   $('oDim').value=Math.round(opt.dim*100);$('vDim').textContent=Math.round(opt.dim*100)+'%';
+  $('oK1').textContent=(opt.k1||'z').toUpperCase();$('oK2').textContent=(opt.k2||'x').toUpperCase();
   $('oAim').value=opt.aim;$('vAim').textContent=opt.aim+'%';
   $('oFx').checked=opt.fx;$('oTrail').checked=opt.trail;
   $('oSnake').checked=opt.snake;$('oBeige').checked=opt.skinBeige;
@@ -2494,6 +2627,7 @@ function loop(now){
     g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.93)');
     cx.fillStyle=g;cx.fillRect(0,0,W,H);
   }
+  if(state==='playing'&&!mods.nf)drawVignette(); // danger : rouge qui monte sur les bords
   drawHP();drawHUD(el,kiai);drawErrBar();drawCursor();
   if(state==='paused'){
     cx.fillStyle='rgba(0,0,0,.45)';cx.fillRect(0,0,W,H);
