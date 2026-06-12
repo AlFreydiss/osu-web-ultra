@@ -755,17 +755,21 @@ async function analyze(buf){
   const sr=buf.sampleRate,n=buf.length;
   const c0=buf.getChannelData(0),c1=buf.numberOfChannels>1?buf.getChannelData(1):null;
   const win=1024,nb=Math.floor(n/win);
-  const E=new Float32Array(nb),EL=new Float32Array(nb),EH=new Float32Array(nb);
+  const E=new Float32Array(nb),EL=new Float32Array(nb),EM=new Float32Array(nb),EH=new Float32Array(nb);
+  // 3 bandes : basses <150 Hz (kick/basse), MÉDIUMS 150–3200 Hz (la VOIX), aigus >3200 Hz (hats)
   const k=1-Math.exp(-PI2*150/sr);let lp=0;
+  const k2=1-Math.exp(-PI2*3200/sr);let lp2=0;
   for(let i=0;i<nb;i++){
-    let l=0,h=0;const o=i*win;
+    let l=0,m=0,h=0;const o=i*win;
     for(let j=0;j<win;j++){
       const v=c1?(c0[o+j]+c1[o+j])*.5:c0[o+j];
       lp+=k*(v-lp);
       const hv=v-lp;
-      l+=lp*lp;h+=hv*hv;
+      lp2+=k2*(hv-lp2);
+      const tv=hv-lp2;
+      l+=lp*lp;m+=lp2*lp2;h+=tv*tv;
     }
-    EL[i]=l;EH[i]=h;E[i]=l+h;
+    EL[i]=l;EM[i]=m;EH[i]=h;E[i]=l+m+h;
     if(i%4000===3999){$('loadTxt').textContent='Analyse spectrale… '+Math.round(i/nb*100)+'%';
       await new Promise(r=>setTimeout(r));}
   }
@@ -783,18 +787,25 @@ async function analyze(buf){
     }
     return out;
   }
-  let lows=detect(EL,1.5,200,1),highs=detect(EH,1.55,135,0);
-  let beats=lows.concat(highs).sort((a,b)=>a.t-b.t);
+  // Pondération : la VOIX (médiums) gagne les fenêtres de sélection de genMap,
+  // l'instru (kick/basse, hats) compte moins — la map suit les paroles d'abord.
+  const weigh=(arr,w)=>{for(const b of arr)b.s*=w;return arr;};
+  let lows=weigh(detect(EL,1.6,200,1),.78),
+      mids=weigh(detect(EM,1.4,140,2),1.35),
+      highs=weigh(detect(EH,1.65,150,0),.85);
+  let beats=lows.concat(mids,highs).sort((a,b)=>a.t-b.t);
   const merged=[];
   for(const b of beats){
     const p=merged[merged.length-1];
-    if(p&&b.t-p.t<70){if(b.b&&!p.b){p.b=1;p.s=Math.max(p.s,b.s);}continue;}
+    if(p&&b.t-p.t<70){p.s=Math.max(p.s,b.s);if(b.b===1)p.b=1;continue;}
     merged.push(b);
   }
   beats=merged;
   if(beats.length<35){
-    lows=detect(EL,1.25,200,1);highs=detect(EH,1.3,135,0);
-    beats=lows.concat(highs).sort((a,b)=>a.t-b.t);
+    lows=weigh(detect(EL,1.25,200,1),.78);
+    mids=weigh(detect(EM,1.2,140,2),1.35);
+    highs=weigh(detect(EH,1.3,150,0),.85);
+    beats=lows.concat(mids,highs).sort((a,b)=>a.t-b.t);
   }
   const envDt=180,ne=Math.ceil(n/sr*1000/envDt),env=new Float32Array(ne);
   for(let i=0;i<nb;i++){const ei=Math.min(ne-1,Math.floor(i*wms/envDt));env[ei]+=E[i];}
