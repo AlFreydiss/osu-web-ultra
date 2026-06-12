@@ -1032,7 +1032,7 @@ function genMap(){
       if(inVocal(b.t)){if(!(b.b===2||b.v||b.h>0)&&b.s<2.2)continue;}
       else if(interBreath(b.t))continue;
     }
-    const g=isKiai(b.t)?d.gap/(opt.diff>=2?1.5:1.32):d.gap; // kiai plus dense en Difficile/Expert
+    const g=isKiai(b.t)?d.gap/(opt.diff>=2?1.75:1.45):d.gap; // REFRAIN : ça accélère fort
     if(b.t-last>=g){sel.push(b);last=b.t;}
     else if(sel.length&&b.s>sel[sel.length-1].s*1.25&&
       b.t-(sel.length>1?sel[sel.length-2].t:-9999)>=g){
@@ -1063,7 +1063,7 @@ function genMap(){
       continue;
     }
     const stream=gap<215;
-    const spc=d.spc*(kiai?1.18:1);
+    const spc=d.spc*(kiai?1.4:1); // REFRAIN : jumps nettement plus larges
     let dist,inPat=false;
     if(stream){
       dist=clamp(gap*.38*spc,26,72);
@@ -1071,15 +1071,16 @@ function genMap(){
       ang+=sCurve+(rng()-.5)*.3;
     }else{
       sCurve=0;
-      // espacement = temps × intensité : les accents forts/voix tenue = jumps plus grands
-      dist=clamp(gap*.5*spc*(.7+(b.s||1)*.22)*(b.b===2?1.18:b.b?1.08:1),70,360);
+      // espacement = temps × intensité × refrain (vélocité plus haute au refrain)
+      dist=clamp(gap*.5*spc*(.7+(b.s||1)*.22)*(b.b===2?1.18:b.b?1.08:1)*(kiai?1.32:1),70,kiai?470:360);
       if(patLeft>0){
         // au cœur d'un motif géométrique : angle ET distance fixes → forme nette
         inPat=true;ang+=patSign*patTurn;patLeft--;if(patDist)dist=patDist;
       }else{
         const strong=(b.s||1)>1.8||kiai;
-        if(rng()<(strong?.42:.2))ang+=Math.PI+(rng()-.5)*.7; // aller-retour franc (back-and-forth)
-        else{if(rng()<.12)flowSign=-flowSign;ang+=flowSign*(.5+rng()*.95);} // virage fluide, sens conservé
+        if(rng()<(strong?.48:.2))ang+=Math.PI+(rng()-.5)*(kiai?1.1:.7); // aller-retour franc, + erratique en refrain
+        // virage fluide ; en refrain l'amplitude grimpe → ça part de partout
+        else{if(rng()<(kiai?.22:.12))flowSign=-flowSign;ang+=flowSign*(.5+rng()*.95+(kiai?rng()*.7:0));}
         // amorce parfois un polygone régulier en kiai (carré 90°, triangle 120°, étoile 144°)
         if(kiai&&opt.diff>=1&&rng()<.2){
           patLeft=2+(rng()*4|0);patTurn=[Math.PI/2,2.094,2.513][rng()*3|0];
@@ -1092,10 +1093,11 @@ function genMap(){
       ang+=.9;sCurve=-sCurve;patLeft=0; // un rebond de bord casse le motif en cours
       tx=x+Math.cos(ang)*dist;ty=y+Math.sin(ang)*dist;}
     tx=clamp(tx,padS,W-padS);ty=clamp(ty,padT,H-padB);
-    // kiai en Difficile/Expert : jumps miroir nerveux façon osu (hors motif géométrique)
-    if(kiai&&!stream&&!inPat&&opt.diff>=2&&rng()<.32){
+    // REFRAIN : jumps miroir nerveux (saute à l'opposé du terrain) — fréquents, tous niveaux
+    if(kiai&&!stream&&!inPat&&rng()<(opt.diff>=2?.46:.3)){
       tx=clamp(W-tx+(rng()-.5)*90,padS,W-padS);
       ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
+      ang=Math.atan2(ty-y,tx-x);
     }
     // anti-chevauchement : deux notes éloignées dans le temps mais collées (après
     // clamp aux bords) = illisible → on repousse perpendiculairement vers le terrain
