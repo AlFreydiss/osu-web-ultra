@@ -394,7 +394,7 @@ const STORE_PREFIX='osuweb_';  // préfixe de toutes les clés localStorage
 const MOBILE_MAX_W=900;        // écran tactile plus étroit que ça = mode mobile
 const KIAI_MAX_DESKTOP=260;    // plafond de particules kiai (desktop)
 const KIAI_MAX_MOBILE=120;     // plafond de particules kiai (mobile, perf)
-const AIM_BASE=1.15;           // hitbox de base (× rayon du cercle), valeur osu! d'origine
+const AIM_BASE=1.0;            // hitbox de base = rayon EXACT, comme le vrai osu
 const AIM_BONUS_MAX=.5;        // bonus max de hitbox apporté par l'aide à la visée (à 100%)
 const QUANT_TOL=.28;           // tolérance de calage des beats sur la grille BPM (fraction de demi-temps)
 const QUANT_PHASES=24;         // nombre de phases testées pour trouver l'origine de la grille rythmique
@@ -572,6 +572,8 @@ Object.assign(mods,store.get('mods',{}));
 if(opt.cs>10)opt.cs=clamp((54.4-opt.cs)/4.48,0,10); // migration : ancien réglage en px → CS osu!
 // La difficulté = complexité + vitesse, jamais la taille : CS borné à une plage lisible
 if(!(opt.cs>=2&&opt.cs<=6))opt.cs=4;
+// passage hitbox authentique : l'aide à la visée repart à 0 une fois (réglable ensuite)
+if(!store.get('aimReset2',false)){opt.aim=0;store.set('aimReset2',true);}
 applyDPR(); // taille initiale du canvas (HD si dispo)
 if(IS_MOBILE)mods.fl=false; // FL injouable au doigt : le doigt cache le trou de lumière
 const saveOpt=()=>{store.set('opt',opt);store.set('mods',mods);};
@@ -1124,10 +1126,10 @@ class HitFX{
       cx.fillStyle=this.lc;cx.shadowBlur=8;cx.shadowColor='rgba(0,0,0,.5)';
       for(let i=0;i<word.length;i++)cx.fillText(word[i],x0+i*sp,this.y+t*26);
     }else{
-      // GREAT./OK/MEH : petit, pop bref puis fade — discret comme lazer
+      // GREAT./OK/MEH : pop bref puis fade en MONTANT légèrement (lazer)
       const sc=.85+.2*easeOut(Math.min(1,this.age/140));
       cx.globalAlpha=Math.max(0,1-t*1.45);
-      cx.translate(this.x,this.y-R*1.05);cx.scale(sc,sc);
+      cx.translate(this.x,this.y-R*1.05-t*12);cx.scale(sc,sc);
       cx.font='800 15px '+SKIN.FONT;
       cx.fillStyle=this.lc;cx.shadowBlur=8;cx.shadowColor='rgba(0,0,0,.55)';
       cx.fillText(this.lbl,0,0);
@@ -1271,10 +1273,10 @@ function _ballSprite(col){
 }
 /* Curseur lazer : disque dégradé rose + anneau blanc + halo doux, baked */
 function _cursorSprite(hi){
-  const S=64,c=document.createElement('canvas');
+  const S=96,c=document.createElement('canvas'); // gros curseur, taille du vrai client
   c.width=c.height=Math.ceil(S*DPRv);c._S=S;
   const g=c.getContext('2d');g.scale(DPRv,DPRv);
-  const m=S/2,r0=19;
+  const m=S/2,r0=28;
   const halo=g.createRadialGradient(m,m,r0*.4,m,m,r0*1.6);
   halo.addColorStop(0,hi?'rgba(255,160,200,.5)':'rgba(255,102,170,.38)');halo.addColorStop(1,'rgba(255,102,170,0)');
   g.beginPath();g.arc(m,m,r0*1.6,0,PI2);g.fillStyle=halo;g.fill();
@@ -1282,8 +1284,8 @@ function _cursorSprite(hi){
   if(hi){gr.addColorStop(0,'#ffe3f0');gr.addColorStop(.55,'#ff8fc0');gr.addColorStop(1,'#e0418d');}
   else{gr.addColorStop(0,'#ffd1e6');gr.addColorStop(.55,'#ff66aa');gr.addColorStop(1,'#c2347c');}
   g.beginPath();g.arc(m,m,r0,0,PI2);g.fillStyle=gr;g.fill();
-  g.beginPath();g.arc(m,m,r0,0,PI2);g.strokeStyle='rgba(255,255,255,.95)';g.lineWidth=3;g.stroke();
-  g.beginPath();g.arc(m,m,r0+2.2,0,PI2);g.strokeStyle='rgba(0,0,0,.45)';g.lineWidth=1.6;g.stroke();
+  g.beginPath();g.arc(m,m,r0,0,PI2);g.strokeStyle='rgba(255,255,255,.95)';g.lineWidth=4.2;g.stroke();
+  g.beginPath();g.arc(m,m,r0+3,0,PI2);g.strokeStyle='rgba(0,0,0,.45)';g.lineWidth=2;g.stroke();
   return c;
 }
 function _dotSprite(){
@@ -1332,18 +1334,23 @@ function approach(x,y,col,el,t,alpha){
 
 function drawCircleObj(o,el){
   const col=comboCol(o.ci);
-  // hit : scale 1→1.4 + fade 240ms + flash blanc (lighting)
+  // hit lazer : l'anneau blanc se DÉTACHE et s'étend, le disque grossit en douceur,
+  // le numéro s'efface en premier, lighting teinté combo
   if(o.hit){
     const t=clamp((el-o.hitAt)/TIMING.HIT_FADE,0,1);if(t>=1)return;
-    const e=easeOut(t),sc=1+(TIMING.HIT_SCALE-1)*e;
-    cx.save();cx.globalAlpha=(1-e)*.26; // lighting teinté combo, comme le vrai client
+    const e=easeOut(t);
+    cx.save();cx.globalAlpha=(1-e)*.26;
     const[lr2,lg2,lb2]=h2r(col);
-    cx.beginPath();cx.arc(o.x,o.y,R*sc*1.06,0,PI2);
-    const fl=cx.createRadialGradient(o.x,o.y,0,o.x,o.y,R*sc*1.06);
+    cx.beginPath();cx.arc(o.x,o.y,R*1.3,0,PI2);
+    const fl=cx.createRadialGradient(o.x,o.y,0,o.x,o.y,R*1.3);
     fl.addColorStop(0,`rgba(${Math.min(255,lr2+120)},${Math.min(255,lg2+120)},${Math.min(255,lb2+120)},.85)`);
     fl.addColorStop(1,`rgba(${lr2},${lg2},${lb2},0)`);
     cx.fillStyle=fl;cx.fill();cx.restore();
-    baseCircle(o.x,o.y,o.ci,1-e,o.num,sc);
+    baseCircle(o.x,o.y,o.ci,1-e,t<.4?o.num:null,1+.28*e); // disque doux, numéro vite parti
+    cx.save();cx.globalAlpha=(1-e)*.8;                    // l'anneau détaché file devant
+    cx.beginPath();cx.arc(o.x,o.y,R*(1+e*.8),0,PI2);
+    cx.strokeStyle='#fff';cx.lineWidth=Math.max(2,R*SKIN.RING_W*(1-e*.45));cx.stroke();
+    cx.restore();
     return;
   }
   // miss : teinte rouge, chute 8px, fade 100ms
@@ -1618,7 +1625,7 @@ function drawCursor(){
   cursorSc+=((pressing?1.3:1)-cursorSc)*.32; // expansion douce au clic, comme lazer
   const sp=pressing?SPRITES.cursorHi:SPRITES.cursor;
   if(sp){
-    const s=64*cursorSc*(opt.curSize||1.25); // taille réglable (Options), 125 % par défaut
+    const s=96*cursorSc*(opt.curSize||1.15); // gros par défaut, réglable dans les Options
     cx.drawImage(sp,mx-s/2,my-s/2,s,s);
   }
 }
