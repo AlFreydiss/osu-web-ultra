@@ -1297,10 +1297,12 @@ function drawCircleObj(o,el){
   if(o.hit){
     const t=clamp((el-o.hitAt)/TIMING.HIT_FADE,0,1);if(t>=1)return;
     const e=easeOut(t),sc=1+(TIMING.HIT_SCALE-1)*e;
-    cx.save();cx.globalAlpha=(1-e)*.22; // lighting discret, façon lazer
-    cx.beginPath();cx.arc(o.x,o.y,R*sc*1.04,0,PI2);
-    const fl=cx.createRadialGradient(o.x,o.y,0,o.x,o.y,R*sc*1.04);
-    fl.addColorStop(0,'rgba(255,255,255,.8)');fl.addColorStop(1,'rgba(255,255,255,0)');
+    cx.save();cx.globalAlpha=(1-e)*.26; // lighting teinté combo, comme le vrai client
+    const[lr2,lg2,lb2]=h2r(col);
+    cx.beginPath();cx.arc(o.x,o.y,R*sc*1.06,0,PI2);
+    const fl=cx.createRadialGradient(o.x,o.y,0,o.x,o.y,R*sc*1.06);
+    fl.addColorStop(0,`rgba(${Math.min(255,lr2+120)},${Math.min(255,lg2+120)},${Math.min(255,lb2+120)},.85)`);
+    fl.addColorStop(1,`rgba(${lr2},${lg2},${lb2},0)`);
     cx.fillStyle=fl;cx.fill();cx.restore();
     baseCircle(o.x,o.y,o.ci,1-e,o.num,sc);
     return;
@@ -1353,9 +1355,10 @@ function bakeSliderBody(o,lr,lg,lb,r,g,b){
   const seg=(width,style)=>{g2.beginPath();g2.moveTo(p.pts[0].x,p.pts[0].y);
     for(let i=1;i<p.pts.length;i++)g2.lineTo(p.pts[i].x,p.pts[i].y);
     g2.lineWidth=width;g2.strokeStyle=style;g2.stroke();};
+  // référence client : bordure blanche teintée, intérieur SOMBRE translucide
   seg(R*2,'rgba(255,255,255,.95)');
-  seg(R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
-  seg(R*1.1,`rgba(${r},${g},${b},.30)`);
+  seg(R*2*(1-SKIN.SLIDER_BORDER),`rgba(${r*.22|0},${g*.22|0},${b*.22|0},.52)`);
+  seg(R*1.05,'rgba(0,0,0,.22)');
   o.bodyX=x0-pad;o.bodyY=y0-pad;
   return c;
 }
@@ -1383,8 +1386,8 @@ function drawSliderObj(o,el){
     }
   }else{ // pendant le snaking : tracé partiel direct (≤ ~400 ms par slider)
     strokePath(p,snake,R*2,'rgba(255,255,255,.95)');
-    strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
-    strokePath(p,snake,R*1.1,`rgba(${r},${g},${b},.30)`);
+    strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${r*.22|0},${g*.22|0},${b*.22|0},.52)`);
+    strokePath(p,snake,R*1.05,'rgba(0,0,0,.22)');
   }
   // ticks : petits points blancs, pop quand collectés
   if(el<o.t+o.span&&snake>=1){
@@ -1427,7 +1430,7 @@ function drawSliderObj(o,el){
     const pos=o.rep?(ph<=1?ph:2-ph):ph;
     const bp=ptAt(p,pos);
     const folR=R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8); // hitbox (l'aide à la visée élargit la zone…)
-    const folVis=R*SKIN.FOLLOW_SCALE;                // …mais le VISUEL reste à 2.4×R, taille lazer
+    const folVis=R*2.05;                             // …mais le VISUEL reste à ~2×R (mesuré sur le vrai client)
     const fol=(pressing&&Math.hypot(mx-bp.x,my-bp.y)<folR)||(o.folLast!==undefined&&el-o.folLast<80);
     // follow circle : pop élastique discret à l'accroche, rétrécit au lâcher
     if(fol&&!o.folOn){o.folOn=true;o.folT=el;}
@@ -1529,6 +1532,15 @@ let cursorSc=1;
 function drawCursor(){
   const now=performance.now();
   if(opt.trail&&SPRITES.dot){
+    // interpolation : la traînée reste continue même en mouvement rapide
+    const lt=trail[trail.length-1];
+    if(lt){
+      const dxy=Math.hypot(mx-lt.x,my-lt.y);
+      if(dxy>14){
+        const n=Math.min(6,Math.floor(dxy/14));
+        for(let i=1;i<=n;i++)trail.push({x:lt.x+(mx-lt.x)*i/(n+1),y:lt.y+(my-lt.y)*i/(n+1),t:now});
+      }
+    }
     trail.push({x:mx,y:my,t:now});
     while(trail.length&&now-trail[0].t>SKIN.CURSOR_TRAIL_MS)trail.shift();
     cx.save();
@@ -1774,6 +1786,22 @@ function drawHUD(el,kiai){
   cx.fillStyle='rgba(255,255,255,.12)';cx.fillRect(tx0,tlY,tx1-tx0,2.5);
   cx.fillStyle='#ff66aa';cx.fillRect(tx0,tlY,(tx1-tx0)*p,2.5);
   cx.beginPath();cx.arc(tx0+(tx1-tx0)*p,tlY+1.2,4,0,PI2);cx.fillStyle='#fff';cx.fill();
+  /* — Métadonnées d'intro (comme le vrai client : titre + difficulté au lead-in) — */
+  const metaA=clamp((-el-200)/400,0,1);
+  if(metaA>0){
+    cx.save();cx.globalAlpha=metaA;cx.textAlign='center';
+    cx.font='800 36px '+SKIN.FONT;cx.fillStyle='#fff';cx.shadowBlur=16;cx.shadowColor='rgba(0,0,0,.8)';
+    cx.fillText(songName,W/2,H*.32);
+    cx.font='600 16px '+SKIN.FONT;cx.fillStyle='rgba(255,255,255,.75)';cx.shadowBlur=8;
+    cx.fillText(curEntry&&curEntry.featured?curEntry.anime+' · '+curEntry.artist:'Import local',W/2,H*.32+32);
+    const st2=starsOf(opt.diff),colS=diffColor(st2);
+    const label=DIFFS[opt.diff].n+'  ★ '+st2.toFixed(2).replace('.',',');
+    cx.font='800 14px '+SKIN.FONT;
+    const tw=cx.measureText(label).width+30;
+    cx.shadowBlur=0;cx.fillStyle=colS;rrect(W/2-tw/2,H*.32+48,tw,27,14);cx.fill();
+    cx.fillStyle=st2>=4.7?'#fff':'#14110a';cx.fillText(label,W/2,H*.32+66);
+    cx.restore();
+  }
   /* — Aides au lancement — */
   if(el<2600){
     cx.globalAlpha=clamp((2600-el)/600,0,1);cx.textAlign='center';
