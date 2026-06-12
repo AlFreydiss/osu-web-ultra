@@ -391,7 +391,7 @@ const h2r=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.sli
 const fmtT=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 
 /* ════ OPTIONS & MODS ════ */
-const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.4,aim:35,trail:true,fx:true,snake:true,skinBeige:false,diff:1};
+const opt={volM:.8,volS:.9,ar:8,cs:4,od:7,dim:.25,aim:35,trail:true,fx:true,snake:true,skinBeige:false,diff:1};
 const mods={hd:false,hr:false,dt:false,fl:false};
 Object.assign(opt,store.get('opt',{}));
 Object.assign(mods,store.get('mods',{}));
@@ -819,8 +819,9 @@ function countHit(q,x,y,c,withCombo=true){
 class HitFX{
   constructor(x,y,q,c,txt){
     this.x=x;this.y=y;this.q=q;this.c=c;this.age=0;this.gone=false;
-    this.lbl=txt!==undefined?txt:(q===300?null:q===100?'100':q===50?'50':'MISS');
-    this.lc=txt!==undefined?c:q===300?'#ffee44':q===100?'#88E55C':q===50?'#8FB3E8':SKIN.MISS_RED;
+    // jugements lazer Argon en TEXTE : GREAT. / OK / MEH / MISS (cf. capture du vrai client)
+    this.lbl=txt!==undefined?txt:(q===300?'GREAT.':q===100?'OK':q===50?'MEH':'MISS');
+    this.lc=txt!==undefined?c:q===300?'#FFE34A':q===100?'#7CE87C':q===50?'#8FB3E8':SKIN.MISS_RED;
     this.ptc=[];
     if(q>0&&txt===undefined){const n=q===300?13:q===100?8:5;
       for(let i=0;i<n;i++){const a=PI2*i/n+Math.random()*.5,s=1.5+Math.random()*3.5;
@@ -839,21 +840,22 @@ class HitFX{
     this.ptc.forEach(p=>{if(p.l<=0)return;cx.save();cx.globalAlpha=Math.max(0,p.l*.85);
       cx.beginPath();cx.arc(this.x+p.px,this.y+p.py,Math.max(.5,4*p.l),0,PI2);
       cx.fillStyle=this.lc;cx.shadowBlur=8;cx.shadowColor=this.lc;cx.fill();cx.restore();});
-    if(!this.lbl)return; // 300 : pas d'affichage, comme lazer
+    if(!this.lbl)return;
     cx.save();cx.textAlign='center';cx.textBaseline='middle';
     if(this.q===0&&this.lbl==='MISS'){
       // fade + chute lente
       cx.globalAlpha=Math.max(0,1-t*1.1);
-      cx.font='800 '+(R*.6)+'px '+SKIN.FONT;
-      const sp=R*.42,word='MISS',x0=this.x-sp*(word.length-1)/2;
+      cx.font='800 '+(R*.5)+'px '+SKIN.FONT;
+      const sp=R*.36,word='MISS',x0=this.x-sp*(word.length-1)/2;
       cx.fillStyle=this.lc;cx.shadowBlur=8;cx.shadowColor='rgba(0,0,0,.5)';
       for(let i=0;i<word.length;i++)cx.fillText(word[i],x0+i*sp,this.y+t*26);
     }else{
-      const sc=1+.25*easeOut(Math.min(1,this.age/160))-(t>.4?(t-.4)*.3:0);
-      cx.globalAlpha=Math.max(0,1-t*1.3);
-      cx.translate(this.x,this.y-R*1.25);cx.scale(sc,sc);
-      cx.font='800 '+(20)+'px '+SKIN.FONT;
-      cx.fillStyle=this.lc;cx.shadowBlur=10;cx.shadowColor='rgba(0,0,0,.45)';
+      // GREAT./OK/MEH : petit, pop bref puis fade — discret comme lazer
+      const sc=.85+.2*easeOut(Math.min(1,this.age/140));
+      cx.globalAlpha=Math.max(0,1-t*1.45);
+      cx.translate(this.x,this.y-R*1.05);cx.scale(sc,sc);
+      cx.font='800 15px '+SKIN.FONT;
+      cx.fillStyle=this.lc;cx.shadowBlur=8;cx.shadowColor='rgba(0,0,0,.55)';
       cx.fillText(this.lbl,0,0);
     }
     cx.restore();
@@ -874,8 +876,8 @@ function drawBG(el,kiai){
     if(t<bgVideo.duration&&Math.abs(bgVideo.currentTime-t)>BGV_SYNC_TOL)bgVideo.currentTime=t;
     const vw=bgVideo.videoWidth,vh=bgVideo.videoHeight,s=Math.max(W/vw,H/vh),dw=vw*s,dh=vh*s;
     cx.drawImage(bgVideo,(W-dw)/2,(H-dh)/2,dw,dh);
-    // voile sombre par-dessus la vidéo : lisibilité des cercles avant tout (contraste)
-    cx.fillStyle='rgba(8,6,16,'+Math.min(.92,BGV_DIM+opt.dim*.4-f*.08)+')';
+    // lazer laisse la vidéo LUMINEUSE : voile léger, piloté surtout par l'option dim
+    cx.fillStyle='rgba(8,6,16,'+Math.min(.9,.18+opt.dim*.6-f*.06)+')';
     cx.fillRect(-30,-30,W+60,H+60);
   }else{
     cx.fillStyle=f>0?`rgb(${(26+f*22*dimF)|0},${(10+f*5*dimF)|0},${(38+f*18*dimF)|0})`:'#0e0b1c';
@@ -890,15 +892,17 @@ function drawBG(el,kiai){
       else beatPtr=i+1;
     }
   }
-  cx.save();
-  cx.strokeStyle=`rgba(175,42,140,${(.028+pulse*.05+f*.04+bass*.05+(kiai?.025:0))*dimF})`;
-  cx.lineWidth=1;const gs=56;
-  cx.beginPath(); // un seul path pour toute la grille (évite ~60 draw calls)
-  for(let x=0;x<W;x+=gs){cx.moveTo(x,-30);cx.lineTo(x,H+30);}
-  for(let y=0;y<H;y+=gs){cx.moveTo(-30,y);cx.lineTo(W+30,y);}
-  cx.stroke();
-  cx.restore();
-  if(opt.fx&&fftData){
+  if(!vid){ // lazer n'affiche AUCUNE grille sur la vidéo — réservée au fond neutre
+    cx.save();
+    cx.strokeStyle=`rgba(175,42,140,${(.028+pulse*.05+f*.04+bass*.05+(kiai?.025:0))*dimF})`;
+    cx.lineWidth=1;const gs=56;
+    cx.beginPath(); // un seul path pour toute la grille (évite ~60 draw calls)
+    for(let x=0;x<W;x+=gs){cx.moveTo(x,-30);cx.lineTo(x,H+30);}
+    for(let y=0;y<H;y+=gs){cx.moveTo(-30,y);cx.lineTo(W+30,y);}
+    cx.stroke();
+    cx.restore();
+  }
+  if(opt.fx&&fftData&&!vid){ // idem : pas de spectro par-dessus la vidéo
     cx.save();cx.globalCompositeOperation='lighter';
     const nbars=56,bw=W/nbars;
     for(let i=0;i<nbars;i++){
@@ -970,9 +974,9 @@ function baseCircle(x,y,col,alpha,num,scale=1){
   gr.addColorStop(0,`rgb(${Math.min(255,r+42)},${Math.min(255,g+42)},${Math.min(255,b+42)})`);
   gr.addColorStop(1,`rgb(${Math.max(0,r-28)},${Math.max(0,g-28)},${Math.max(0,b-28)})`);
   cx.beginPath();cx.arc(x,y,dR,0,PI2);cx.fillStyle=gr;cx.fill();
-  // anneau intérieur plus clair (78%R)
+  // anneau intérieur plus clair (78%R) — discret comme sur le vrai client
   cx.beginPath();cx.arc(x,y,RR*SKIN.INNER_R,0,PI2);
-  cx.strokeStyle=`rgba(${Math.min(255,r+70)},${Math.min(255,g+70)},${Math.min(255,b+70)},.85)`;
+  cx.strokeStyle=`rgba(${Math.min(255,r+70)},${Math.min(255,g+70)},${Math.min(255,b+70)},.45)`;
   cx.lineWidth=Math.max(1.5,RR*.045);cx.stroke();
   // cœur légèrement assombri
   cx.beginPath();cx.arc(x,y,RR*SKIN.INNER_R-cx.lineWidth*.5,0,PI2);
@@ -1040,9 +1044,12 @@ function drawSliderObj(o,el){
   const snake=opt.snake&&el<o.t?clamp((el-(o.t-PRE))/(PRE*.5),0,1):1;
   cx.save();cx.globalAlpha=alpha;
   cx.lineCap='round';cx.lineJoin='round';
-  strokePath(p,snake,R*2,'rgba(255,255,255,.92)');                                   // bordure blanche
-  strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${r*.32|0},${g*.32|0},${b*.32|0},.9)`); // intérieur teinté sombre
-  strokePath(p,snake,R*1.05,`rgba(${r*.18|0},${g*.18|0},${b*.18|0},.55)`);           // profondeur : centre du tube plus sombre
+  // corps lazer : bordure blanche nette, intérieur CLAIR translucide (la vidéo
+  // transparaît), centre légèrement plus saturé (cf. capture du vrai client)
+  const lr=Math.min(255,r+140),lg=Math.min(255,g+140),lb=Math.min(255,b+140);
+  strokePath(p,snake,R*2,'rgba(255,255,255,.95)');
+  strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
+  strokePath(p,snake,R*1.1,`rgba(${r},${g},${b},.30)`);
   // ticks : petits points blancs, pop quand collectés
   if(el<o.t+o.span&&snake>=1){
     const nticks=3;
@@ -1332,32 +1339,32 @@ function drawLiveBoard(){
   }
   const rows=_lbCache;
   if(!lbLiveY)lbLiveY={};
-  const x=10,rh=34,top=84;
+  const x=8,rh=24,top=90; // pills fines et translucides, comme sur le vrai client
   cx.save();
   rows.forEach((e,i)=>{
     const key=e.me?'__me__':e.pseudo+i0(e);
-    const ty=top+i*(rh+5);
+    const ty=top+i*(rh+4);
     lbLiveY[key]=lbLiveY[key]===undefined?ty:lbLiveY[key]+(ty-lbLiveY[key])*.15; // glissement fluide
     const y=lbLiveY[key];
-    cx.globalAlpha=e.me?.95:.72;
-    cx.fillStyle=e.me?'rgba(20,30,18,.8)':'rgba(12,10,20,.6)';
-    rrect(x,y,158,rh,8);cx.fill();
-    if(e.me){cx.strokeStyle='#7CFF4F';cx.lineWidth=1.6;rrect(x,y,158,rh,8);cx.stroke();}
-    cx.textAlign='left';cx.font='700 11.5px '+SKIN.FONT;
-    cx.fillStyle=e.me?'#CFFFC2':'rgba(255,255,255,.85)';
-    cx.fillText((e.pseudo||'').slice(0,12),x+10,y+14);
-    cx.font='600 10.5px '+SKIN.FONT;cx.fillStyle='rgba(255,255,255,.45)';
-    cx.fillText(Number(e.score).toLocaleString('fr-FR'),x+10,y+27);
-    cx.textAlign='right';cx.font='800 12px '+SKIN.FONT;
-    cx.fillStyle='rgba(255,255,255,.3)';cx.fillText('#'+(i+1),x+148,y+15);
+    cx.globalAlpha=e.me?.92:.6;
+    cx.fillStyle=e.me?'rgba(24,38,20,.72)':'rgba(0,0,0,.38)';
+    rrect(x,y,142,rh,6);cx.fill();
+    if(e.me){cx.strokeStyle='#7CFF4F';cx.lineWidth=1.4;rrect(x,y,142,rh,6);cx.stroke();}
+    cx.textAlign='left';cx.font='700 10px '+SKIN.FONT;
+    cx.fillStyle=e.me?'#CFFFC2':'rgba(255,255,255,.82)';
+    cx.fillText((e.pseudo||'').slice(0,11),x+26,y+10);
+    cx.font='600 9px '+SKIN.FONT;cx.fillStyle='rgba(255,255,255,.45)';
+    cx.fillText(Number(e.score).toLocaleString('fr-FR'),x+26,y+19);
+    cx.font='800 10px '+SKIN.FONT;cx.fillStyle='rgba(255,255,255,.35)';
+    cx.fillText('#'+(i+1),x+7,y+15);
   });
   cx.restore();
 }
 function i0(e){return e._i||(e._i=Math.random().toString(36).slice(2,6));}
 function drawHUD(el,kiai){
   cx.save();
-  /* — Score (segments, haut droite) — */
-  segText(String(score).padStart(8,'0'),W-14,12,26,'#fff','right',true);
+  /* — Score (segments, haut droite, discret comme lazer) — */
+  segText(String(score).padStart(8,'0'),W-14,12,19,'#fff','right',true);
   /* — PRÉCISION + combo compact (sous le score) — */
   hudLabel('précision',W-14,58,'right');
   const acc=getAcc();
