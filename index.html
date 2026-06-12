@@ -1236,7 +1236,7 @@ function alphaHD(el,t){
 /* ════ SPRITES PRÉ-RENDUS — le cœur de l'opti : chaque cercle/balle/curseur est
    dessiné UNE fois sur un canvas hors écran (gradients compris), puis simplement
    blitté par drawImage. Zéro path/gradient dans la boucle de rendu. ════ */
-const SPRITES={key:'',circ:[],miss:null,ball:[],cursor:null,cursorHi:null,dot:null};
+const SPRITES={key:'',circ:[],miss:null,ball:[],glow:[],cursor:null,cursorHi:null,dot:null};
 function _circSprite(col){
   const pad=Math.ceil(R*.24)+4,S=Math.ceil(R*2+pad*2)||16,c=document.createElement('canvas');
   c.width=c.height=Math.ceil(S*DPRv);c._S=S;
@@ -1257,6 +1257,21 @@ function _circSprite(col){
   g.strokeStyle=`rgba(${Math.min(255,r+70)},${Math.min(255,g2+70)},${Math.min(255,b+70)},.45)`;
   g.lineWidth=Math.max(1.5,R*.045);g.stroke();
   g.beginPath();g.arc(m,m,R*SKIN.INNER_R-g.lineWidth*.5,0,PI2);g.fillStyle='rgba(0,0,0,.14)';g.fill();
+  // reflet glossy en haut-gauche (croissant discret, fidèle au rendu lazer)
+  g.beginPath();g.arc(m,m,R*.62,-2.6,-.7);
+  g.strokeStyle='rgba(255,255,255,.11)';g.lineWidth=R*.2;g.lineCap='round';g.stroke();
+  return c;
+}
+/* Halo doux sous la slider ball pendant le tracking */
+function _glowSprite(col){
+  const S=Math.ceil(R*3)||24,c=document.createElement('canvas');
+  c.width=c.height=Math.ceil(S*DPRv);c._S=S;
+  const g=c.getContext('2d');g.scale(DPRv,DPRv);
+  const m=S/2,[r,g2,b]=h2r(col);
+  const gr=g.createRadialGradient(m,m,0,m,m,m);
+  gr.addColorStop(0,`rgba(${Math.min(255,r+90)},${Math.min(255,g2+90)},${Math.min(255,b+90)},.5)`);
+  gr.addColorStop(1,'rgba(0,0,0,0)');
+  g.beginPath();g.arc(m,m,m,0,PI2);g.fillStyle=gr;g.fill();
   return c;
 }
 function _ballSprite(col){
@@ -1305,6 +1320,7 @@ function buildSprites(){
   SPRITES.circ=comboCLR().map(_circSprite);
   SPRITES.miss=_circSprite(SKIN.MISS_RED);
   SPRITES.ball=comboCLR().map(_ballSprite);
+  SPRITES.glow=comboCLR().map(_glowSprite);
   if(!SPRITES.cursor){SPRITES.cursor=_cursorSprite(false);SPRITES.cursorHi=_cursorSprite(true);SPRITES.dot=_dotSprite();}
 }
 /* Hit circle Argon : blit du sprite + numéro (seul texte dynamique) */
@@ -1389,6 +1405,15 @@ function strokePath(p,upTo,width,style){
   const nMax=Math.max(2,Math.ceil(p.pts.length*clamp(upTo,0,1)));
   cx.beginPath();cx.moveTo(p.pts[0].x,p.pts[0].y);
   for(let i=1;i<nMax;i++)cx.lineTo(p.pts[i].x,p.pts[i].y);
+  cx.lineWidth=width;cx.strokeStyle=style;cx.stroke();
+}
+/* Tronçon de tracé entre deux fractions (comète derrière la slider ball) */
+function strokeSub(p,f0,f1,width,style){
+  const n=p.pts.length-1;
+  const i0=Math.max(0,Math.floor(f0*n)),i1=Math.min(n,Math.ceil(f1*n));
+  if(i1-i0<1)return;
+  cx.beginPath();cx.moveTo(p.pts[i0].x,p.pts[i0].y);
+  for(let i=i0+1;i<=i1;i++)cx.lineTo(p.pts[i].x,p.pts[i].y);
   cx.lineWidth=width;cx.strokeStyle=style;cx.stroke();
 }
 /* Corps de slider pré-rendu : les 3 strokes sont dessinés UNE fois sur un canvas
@@ -1496,9 +1521,32 @@ function drawSliderObj(o,el){
     const over=fol?1+.12*Math.sin(ft*Math.PI):1; // overshoot réduit : plus de collisions visuelles
     const fs=fol?(.7+.3*easeOut(ft))*over:1-.5*easeOut(ft);
     cx.save();
-    // slider ball : sprite pré-rendu + chevron orienté dans le sens du déplacement
+    // === Tracking actif : comète + halo + étincelles (feel lazer) ===
+    if(fol){
+      // comète lumineuse sur le tronçon que la balle vient de parcourir
+      const back=segB%2?Math.min(1,pos+.12):Math.max(0,pos-.12);
+      cx.save();cx.globalAlpha=.28;cx.lineCap='round';
+      strokeSub(p,Math.min(pos,back),Math.max(pos,back),R*1.35,
+        `rgba(${Math.min(255,r+120)},${Math.min(255,g+120)},${Math.min(255,b+120)},1)`);
+      cx.restore();
+      // halo doux pulsé sous la balle
+      const gl=SPRITES.glow&&SPRITES.glow[o.ci%4];
+      if(gl){const gs=gl._S;
+        cx.save();cx.globalAlpha=.45+.15*Math.sin(performance.now()/95);
+        cx.drawImage(gl,bp.x-gs/2,bp.y-gs/2,gs,gs);cx.restore();}
+      // étincelles qui s'échappent derrière la balle (budget de particules partagé)
+      if(opt.fx&&(o._pT===undefined||el-o._pT>50)){o._pT=el;
+        if(kp.length<KIAI_MAX)
+          kp.push({x:bp.x+(Math.random()-.5)*R*.7,y:bp.y+(Math.random()-.5)*R*.7,
+            vx:(Math.random()-.5)*1.4,vy:(Math.random()-.5)*1.4-.3,l:.55,c:col});
+      }
+    }
+    // slider ball : sprite pré-rendu (pulse au beat en kiai) + chevron directionnel
     const bs=SPRITES.ball[o.ci%4];
-    if(bs)cx.drawImage(bs,bp.x-bs._S/2,bp.y-bs._S/2,bs._S,bs._S);
+    let bSc=1;
+    if(o.kj){const bms=analysis&&analysis.bpm?60000/analysis.bpm:600;
+      bSc=1+.06*Math.max(0,1-(el%bms)/bms*2.2);}
+    if(bs){const bw=bs._S*bSc;cx.drawImage(bs,bp.x-bw/2,bp.y-bw/2,bw,bw);}
     const ahead=ptAt(p,clamp(pos+(segB%2?-.025:.025),0,1));
     const ba=Math.atan2(ahead.y-bp.y,ahead.x-bp.x);
     cx.save();cx.translate(bp.x,bp.y);cx.rotate(ba);
@@ -1512,10 +1560,13 @@ function drawSliderObj(o,el){
     cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
     cx.strokeStyle=`rgba(${Math.min(255,r+130)},${Math.min(255,g+130)},${Math.min(255,b+130)},1)`;
     cx.lineWidth=fol?Math.max(3,R*.11):2;cx.stroke();
-    if(fol){ // fin liseré blanc discret par-dessus
+    if(fol){ // fin liseré blanc discret + voile teinté à l'intérieur (cf. lazer)
       cx.globalAlpha=.35;
       cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
       cx.strokeStyle='rgba(255,255,255,.9)';cx.lineWidth=1.5;cx.stroke();
+      cx.globalAlpha=.07;
+      cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
+      cx.fillStyle=`rgba(${Math.min(255,r+130)},${Math.min(255,g+130)},${Math.min(255,b+130)},1)`;cx.fill();
     }
     cx.restore();
   }
