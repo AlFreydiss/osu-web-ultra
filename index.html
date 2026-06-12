@@ -446,11 +446,32 @@ function tone(f,type='sine',dur=.1,vol=.22){
   const t=AC.currentTime;g.gain.setValueAtTime(vol,t);
   g.gain.exponentialRampToValueAtTime(.001,t+dur);o.start(t);o.stop(t+dur);
 }
+/* Hitsounds façon osu : clic percussif (burst de bruit bandpass) + ping court,
+   au lieu des bips synthé. Le buffer de bruit est créé UNE fois. */
+let _noiseBuf=null;
+function noiseHit(freq,dur,vol){
+  if(!AC||AC.state!=='running')return;
+  if(!_noiseBuf){
+    const n=AC.sampleRate*.12|0;
+    _noiseBuf=AC.createBuffer(1,n,AC.sampleRate);
+    const d=_noiseBuf.getChannelData(0);
+    for(let i=0;i<n;i++)d[i]=Math.random()*2-1;
+  }
+  const s=AC.createBufferSource();s.buffer=_noiseBuf;
+  const f=AC.createBiquadFilter();f.type='bandpass';f.frequency.value=freq;f.Q.value=.85;
+  const g=AC.createGain();const t=AC.currentTime;
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);
+  s.connect(f);f.connect(g);g.connect(sfxG);s.start(t);s.stop(t+dur);
+}
 function sfx(q){
-  if(q===300){tone(880,'sine',.09,.22);setTimeout(()=>tone(1320,'sine',.06,.11),12);}
-  else if(q===100)tone(660,'sine',.09,.18);
-  else if(q===50)tone(440,'triangle',.1,.14);
-  else tone(150,'sawtooth',.16,.13);
+  if(q>0){
+    noiseHit(3200,.055,q===300?.55:.42);          // le "clac" hitnormal
+    tone(q===300?1320:q===100?1100:880,'triangle',.045,.11);
+    if(q===300)tone(1980,'sine',.03,.045);        // brillance sur le 300
+  }else{
+    tone(110,'sawtooth',.22,.15);                 // combobreak sourd
+    noiseHit(600,.12,.22);
+  }
 }
 function startMusic(){
   manualStop=false;
@@ -787,7 +808,7 @@ function genMap(){
 let state='menu';
 let mx=W/2,my=H/2,pressing=false;
 let score,combo,maxCombo,hp,n3,n1,n5,nm,errs;
-let vfxList=[],trail=[],kp=[];
+let vfxList=[],trail=[],kp=[],errsAll=[];
 let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0;
 let bass=0,mid=0;
 const board=store.get('board',{}); // scores locaux persistés entre sessions
@@ -1085,6 +1106,26 @@ function strokePath(p,upTo,width,style){
   for(let i=1;i<nMax;i++)cx.lineTo(p.pts[i].x,p.pts[i].y);
   cx.lineWidth=width;cx.strokeStyle=style;cx.stroke();
 }
+/* Corps de slider pré-rendu : les 3 strokes sont dessinés UNE fois sur un canvas
+   dédié dès que le snaking est fini, puis blittés. Libéré quand le slider meurt. */
+function bakeSliderBody(o,lr,lg,lb,r,g,b){
+  const p=o.path,pad=R+6;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const pt of p.pts){if(pt.x<x0)x0=pt.x;if(pt.x>x1)x1=pt.x;if(pt.y<y0)y0=pt.y;if(pt.y>y1)y1=pt.y;}
+  const w=Math.ceil(x1-x0+pad*2),h=Math.ceil(y1-y0+pad*2);
+  if(w*h>1600*1000)return null; // slider géant : repli sur le tracé direct
+  const c=document.createElement('canvas');c.width=w;c.height=h;
+  const g2=c.getContext('2d');
+  g2.translate(pad-x0,pad-y0);g2.lineCap='round';g2.lineJoin='round';
+  const seg=(width,style)=>{g2.beginPath();g2.moveTo(p.pts[0].x,p.pts[0].y);
+    for(let i=1;i<p.pts.length;i++)g2.lineTo(p.pts[i].x,p.pts[i].y);
+    g2.lineWidth=width;g2.strokeStyle=style;g2.stroke();};
+  seg(R*2,'rgba(255,255,255,.95)');
+  seg(R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
+  seg(R*1.1,`rgba(${r},${g},${b},.30)`);
+  o.bodyX=x0-pad;o.bodyY=y0-pad;
+  return c;
+}
 function drawSliderObj(o,el){
   const col=comboCol(o.ci);const[r,g,b]=h2r(col);
   let alpha=clamp((el-(o.t-PRE))/FADE,0,1);
@@ -1099,9 +1140,19 @@ function drawSliderObj(o,el){
   // corps lazer : bordure blanche nette, intérieur CLAIR translucide (la vidéo
   // transparaît), centre légèrement plus saturé (cf. capture du vrai client)
   const lr=Math.min(255,r+140),lg=Math.min(255,g+140),lb=Math.min(255,b+140);
-  strokePath(p,snake,R*2,'rgba(255,255,255,.95)');
-  strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
-  strokePath(p,snake,R*1.1,`rgba(${r},${g},${b},.30)`);
+  if(snake>=1){
+    if(o.bodyCv===undefined)o.bodyCv=bakeSliderBody(o,lr,lg,lb,r,g,b);
+    if(o.bodyCv)cx.drawImage(o.bodyCv,o.bodyX,o.bodyY);
+    else{ // repli (slider hors gabarit)
+      strokePath(p,1,R*2,'rgba(255,255,255,.95)');
+      strokePath(p,1,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
+      strokePath(p,1,R*1.1,`rgba(${r},${g},${b},.30)`);
+    }
+  }else{ // pendant le snaking : tracé partiel direct (≤ ~400 ms par slider)
+    strokePath(p,snake,R*2,'rgba(255,255,255,.95)');
+    strokePath(p,snake,R*2*(1-SKIN.SLIDER_BORDER),`rgba(${lr},${lg},${lb},.40)`);
+    strokePath(p,snake,R*1.1,`rgba(${r},${g},${b},.30)`);
+  }
   // ticks : petits points blancs, pop quand collectés
   if(el<o.t+o.span&&snake>=1){
     const nticks=3;
@@ -1336,6 +1387,8 @@ function drawErrBar(){
   cx.fillStyle='rgba(255,238,68,.28)';cx.fillRect(cx0-w3px,y,w3px*2,h);
   cx.fillStyle='#fff';cx.fillRect(cx0-1,y-2,2,h+4);
   const now=performance.now();
+  // purge de tête : la barre ne parcourt que les ~3 dernières secondes, pas toute la partie
+  while(errs.length&&now-errs[0].rt>3000)errs.shift();
   let sum=0,cnt=0;
   for(const e of errs){
     const age=now-e.rt;if(age>3000)continue;
@@ -1521,7 +1574,7 @@ function tryHit(px,py){
     const diff=el-o.t,ad=Math.abs(diff);
     if(ad>W50)continue; // objet expiré qui chevauche : on regarde le candidat suivant (anti note-lock)
     const q=ad<=W3?300:ad<=W1?100:50;
-    errs.push({d:diff,rt:performance.now()});
+    errs.push({d:diff,rt:performance.now()});errsAll.push(diff);
     if(o.k===0){o.hit=true;o.hitAt=el;countHit(q,o.x,o.y,comboCol(o.ci));}
     else{o.hj=true;o.hh=true;
       addCombo();hp=clamp(hp+.03,0,1);cfFlash=1;bgFlash=.6;
@@ -1532,14 +1585,19 @@ function tryHit(px,py){
 
 let liveStart=0; // fenêtre glissante : index du premier objet encore vivant (map triée par t)
 function updateGame(el,dt){
-  if(map.length&&el>map[0].t-1200)
+  // drain passif — coupé pendant les BREAKS (pas d'objet à moins de 3 s), comme osu
+  const nxt=map[liveStart];
+  if(map.length&&el>map[0].t-1200&&!(nxt&&nxt.t-el>3000))
     hp=clamp(hp-.012*(dt/1000),0,1);
   while(liveStart<map.length){ // avance la tête au-delà des objets finalisés
     const o=map[liveStart];
     const end=o.k===0?(o.hit?o.hitAt+400:o.miss?o.missAt+300:Infinity)
       :o.k===1?(o.done?o.t+o.span+500:Infinity)
       :(o.done?o.t+o.dur+500:Infinity);
-    if(end!==Infinity&&el>end)liveStart++;else break;
+    if(end!==Infinity&&el>end){
+      if(o.k===1&&o.bodyCv)o.bodyCv=null; // libère le corps pré-rendu du slider mort
+      liveStart++;
+    }else break;
   }
   for(let oi=liveStart;oi<map.length;oi++){
     const o=map[oi];
@@ -1616,7 +1674,7 @@ function buildPlay(){
   computeParams();
   map=genMap();
   score=0;combo=0;maxCombo=0;hp=1;n3=0;n1=0;n5=0;nm=0;lastBurst=0;
-  vfxList=[];trail=[];kp=[];errs=[];bgFlash=0;cfFlash=0;beatPtr=0;shake=0;
+  vfxList=[];trail=[];kp=[];errs=[];errsAll=[];bgFlash=0;cfFlash=0;beatPtr=0;shake=0;
   keysOv.forEach(k=>{k.n=0;k.on=false;});clickTimes=[];comboBreakFX=null;_lbCache=null;liveStart=0;cursorSc=1;
   // leaderboard in-game : top mondial de la map + l'entrée du joueur (réordonnée en live)
   lbLive=[{pseudo:store.get('pseudo','')||'TOI',score:0,me:true}];lbLiveY=null;
@@ -1640,9 +1698,9 @@ function finish(){
   state='results';stopMusic(true);
   const acc=getAcc(),[g,c]=gradeOf();
   let ur='—';
-  if(errs.length>3){
-    const m=errs.reduce((s,e)=>s+e.d,0)/errs.length;
-    const v=errs.reduce((s,e)=>s+(e.d-m)*(e.d-m),0)/errs.length;
+  if(errsAll.length>3){
+    const m=errsAll.reduce((s,d)=>s+d,0)/errsAll.length;
+    const v=errsAll.reduce((s,d)=>s+(d-m)*(d-m),0)/errsAll.length;
     ur=Math.round(Math.sqrt(v)*10);
   }
   $('gGrade').textContent=g;$('gGrade').style.color=c;
@@ -1677,9 +1735,9 @@ function finish(){
   })();
   // graphe de timing : répartition des écarts (vert=300 / jaune=100 / bleu=50)
   const hc=$('gHisto').getContext('2d');hc.clearRect(0,0,300,56);
-  if(errs.length){
+  if(errsAll.length){
     const bins=new Array(30).fill(0);
-    for(const e of errs){const i=clamp(Math.floor((e.d/W50+1)/2*30),0,29);bins[i]++;}
+    for(const d of errsAll){const i=clamp(Math.floor((d/W50+1)/2*30),0,29);bins[i]++;}
     const mxB=Math.max(...bins,1);
     for(let i=0;i<30;i++){
       const d=Math.abs((i+.5)/30*2-1)*W50;
@@ -2074,6 +2132,9 @@ addEventListener('keydown',e=>{
   }
   if(e.key===' '&&state==='playing'&&map.length&&elapsed()<map[0].t-4000){
     e.preventDefault();skipIntro();}
+  // quick retry osu : touche ² (ou `) en jeu, pause, échec ou résultats
+  if((e.key==='²'||e.key==='`')&&['playing','paused','failed','results'].includes(state)&&AC){
+    AC.resume();stopMusic(false);buildPlay();}
   if(e.key==='Enter'&&state==='results'&&e.target.tagName!=='INPUT')$('bRetry3').click();
 });
 addEventListener('keyup',e=>{
