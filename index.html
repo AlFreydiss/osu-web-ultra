@@ -969,13 +969,18 @@ function genMap(){
   if(sel.length>1300)sel.length=1300;
   const objs=[];
   let num=1,ci=0,x=W/2,y=H/2,ang=rng()*PI2,lastSpin=-99999,sCurve=0;
+  // état de FLOW : sens de rotation courant + motif géométrique en cours (kiai)
+  let flowSign=rng()<.5?-1:1,patLeft=0,patTurn=0,patSign=1,patDist=0;
   // combos calés sur les MESURES (4 temps) comme les vraies maps, en plus des longs trous
   const beatLen=analysis.bpm?60000/analysis.bpm:0;
   const measure=t=>beatLen?Math.floor((t-(analysis.gridOff||0))/(beatLen*4)):0;
   for(let i=0;i<sel.length;i++){
     const b=sel[i],nx=sel[i+1],gap=nx?nx.t-b.t:99999;
     const kiai=isKiai(b.t);
-    if(i&&(b.t-sel[i-1].t>1400||(beatLen&&num>4&&measure(b.t)!==measure(sel[i-1].t)))){ci=(ci+1)%CLR.length;num=1;}
+    const prev=sel[i-1];
+    // nouveau combo : long trou, changement de mesure, OU début d'une phrase chantée
+    const phraseStart=b.b===2&&(b.h||0)>200&&(!prev||prev.b!==2);
+    if(i&&(b.t-prev.t>1400||(beatLen&&num>4&&measure(b.t)!==measure(prev.t))||(phraseStart&&num>2))){ci=(ci+1)%CLR.length;num=1;}
     let wantSpin=gap>2800&&b.t-lastSpin>16000&&i>3&&nx;
     if(!wantSpin&&gap>2200&&nx&&analysis.kiai.some(s=>Math.abs(s.s-nx.t)<900)&&b.t-lastSpin>12000)wantSpin=true;
     if(wantSpin){
@@ -986,23 +991,36 @@ function genMap(){
     }
     const stream=gap<215;
     const spc=d.spc*(kiai?1.18:1);
-    let dist;
+    let dist,inPat=false;
     if(stream){
       dist=clamp(gap*.38*spc,26,72);
       if(Math.abs(sCurve)<.01)sCurve=(rng()<.5?-1:1)*.24;
       ang+=sCurve+(rng()-.5)*.3;
     }else{
       sCurve=0;
-      dist=clamp(gap*.5*spc*(.8+(b.s||1)*.15)*(b.b?1.12:1),70,350);
-      ang+=(rng()-.5)*1.7;
+      // espacement = temps × intensité : les accents forts/voix tenue = jumps plus grands
+      dist=clamp(gap*.5*spc*(.7+(b.s||1)*.22)*(b.b===2?1.18:b.b?1.08:1),70,360);
+      if(patLeft>0){
+        // au cœur d'un motif géométrique : angle ET distance fixes → forme nette
+        inPat=true;ang+=patSign*patTurn;patLeft--;if(patDist)dist=patDist;
+      }else{
+        const strong=(b.s||1)>1.8||kiai;
+        if(rng()<(strong?.42:.2))ang+=Math.PI+(rng()-.5)*.7; // aller-retour franc (back-and-forth)
+        else{if(rng()<.12)flowSign=-flowSign;ang+=flowSign*(.5+rng()*.95);} // virage fluide, sens conservé
+        // amorce parfois un polygone régulier en kiai (carré 90°, triangle 120°, étoile 144°)
+        if(kiai&&opt.diff>=1&&rng()<.2){
+          patLeft=2+(rng()*4|0);patTurn=[Math.PI/2,2.094,2.513][rng()*3|0];
+          patSign=rng()<.5?-1:1;patDist=dist;
+        }
+      }
     }
     let tx=x+Math.cos(ang)*dist,ty=y+Math.sin(ang)*dist,tr=0;
     while((tx<padS||tx>W-padS||ty<padT||ty>H-padB)&&tr++<14){
-      ang+=.9;sCurve=-sCurve;
+      ang+=.9;sCurve=-sCurve;patLeft=0; // un rebond de bord casse le motif en cours
       tx=x+Math.cos(ang)*dist;ty=y+Math.sin(ang)*dist;}
     tx=clamp(tx,padS,W-padS);ty=clamp(ty,padT,H-padB);
-    // kiai en Difficile/Expert : jumps miroir nerveux façon osu (grands allers-retours)
-    if(kiai&&!stream&&opt.diff>=2&&rng()<.32){
+    // kiai en Difficile/Expert : jumps miroir nerveux façon osu (hors motif géométrique)
+    if(kiai&&!stream&&!inPat&&opt.diff>=2&&rng()<.32){
       tx=clamp(W-tx+(rng()-.5)*90,padS,W-padS);
       ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
     }
