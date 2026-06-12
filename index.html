@@ -35,8 +35,8 @@ canvas{position:fixed;inset:0}
 body.playing{cursor:none}
 #ui{position:fixed;inset:0;pointer-events:none;z-index:5}
 /* Transitions d'écran lazer : fade + léger scale */
-.screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;pointer-events:none;background:rgba(8,5,16,.45);visibility:hidden;opacity:0;transform:scale(1.025);transition:opacity .22s ease,transform .3s cubic-bezier(.22,1,.36,1),visibility 0s .3s}
-.screen.on{visibility:visible;opacity:1;transform:none;pointer-events:auto;transition:opacity .22s ease,transform .3s cubic-bezier(.22,1,.36,1)}
+.screen{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:15px;pointer-events:none;background:rgba(8,5,16,.45);visibility:hidden;opacity:0;transform:scale(1.05);transition:opacity .2s ease,transform .42s cubic-bezier(.34,1.56,.64,1),visibility 0s .42s}
+.screen.on{visibility:visible;opacity:1;transform:none;pointer-events:auto;transition:opacity .2s ease,transform .42s cubic-bezier(.34,1.56,.64,1)}
 @media (prefers-reduced-motion:reduce){.screen{transition:none;transform:none}}
 /* ════ ÉCRAN TITRE ════ */
 #sMenu{background:transparent}
@@ -1014,6 +1014,7 @@ let mx=W/2,my=H/2,pressing=false;
 let score,combo,maxCombo,hp,n3,n1,n5,nm,errs;
 let vfxList=[],trail=[],kp=[],errsAll=[];
 let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0,wasKiai=false;
+let playIntroT=0,pauseDim=0,kiaiRingT=0;
 let bass=0,mid=0;
 const board=store.get('board',{}); // scores locaux persistés entre sessions
 /* Meilleur grade local — affiché sur les cartes du song select (comme lazer) */
@@ -1066,16 +1067,32 @@ class HitFX{
     // jugements lazer Argon en TEXTE : GREAT. / OK / MEH / MISS (cf. capture du vrai client)
     this.lbl=txt!==undefined?txt:(q===300?'GREAT.':q===100?'OK':q===50?'MEH':'MISS');
     this.lc=txt!==undefined?c:q===300?'#FFE34A':q===100?'#7CE87C':q===50?'#8FB3E8':SKIN.MISS_RED;
-    this.ptc=[];
+    this.ptc=[];this.spk=null;
     if(q>0&&txt===undefined){const n=q===300?13:q===100?8:5;
       for(let i=0;i<n;i++){const a=PI2*i/n+Math.random()*.5,s=1.5+Math.random()*3.5;
-        this.ptc.push({px:0,py:0,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1});}}
+        this.ptc.push({px:0,py:0,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1});}
+      if(q===300)this.spk=Array.from({length:5},()=>({a:Math.random()*PI2,v:1.6+Math.random()*2.2,l:1})); // étincelles radiales
+    }
   }
   tick(dt){this.age+=dt;
     this.ptc.forEach(p=>{p.px+=p.vx;p.py+=p.vy;p.vy+=.13;p.l-=.032;});
-    if(this.age>800)this.gone=true;}
+    if(this.spk)this.spk.forEach(s=>{s.l-=.05;});
+    if(this.age>660)this.gone=true;}
   draw(){
-    const t=Math.min(1,this.age/700);
+    const t=Math.min(1,this.age/560); // jugements plus VIFS
+    if(this.spk){ // étincelles directionnelles du 300 : traits qui fusent
+      cx.save();cx.strokeStyle=this.c;cx.lineCap='round';
+      for(const s of this.spk){
+        if(s.l<=0)continue;
+        const d0=R*(.9+(1-s.l)*1.6),d1=d0+R*.34*s.l;
+        cx.globalAlpha=s.l*.8;cx.lineWidth=2.2*s.l+0.6;
+        cx.beginPath();
+        cx.moveTo(this.x+Math.cos(s.a)*d0,this.y+Math.sin(s.a)*d0);
+        cx.lineTo(this.x+Math.cos(s.a)*d1,this.y+Math.sin(s.a)*d1);
+        cx.stroke();
+      }
+      cx.restore();
+    }
     if(this.q===10){ // pop de tick : minuscule et bref, ne chevauche rien
       const tt=Math.min(1,this.age/300);if(tt>=1)return;
       cx.save();cx.globalAlpha=(1-tt)*.6;
@@ -1531,7 +1548,9 @@ function drawSpinnerObj(o,el){
   cx.restore();
   cx.save();cx.globalAlpha=alpha;cx.textAlign='center';
   if(el>=o.t&&!o.done){
-    if(ratio>=1&&!o.clearAt)o.clearAt=el;
+    if(ratio>=1&&!o.clearAt){o.clearAt=el;
+      for(let i=0;i<18;i++)kp.push({x:cxx,y:cyy,vx:(Math.random()-.5)*9,
+        vy:-(3+Math.random()*7),l:1,c:CLR[i%CLR.length]});} // confettis du CLEAR
     if(o.clearAt){
       // CLEAR! avec scale-bounce
       const bt=clamp((el-o.clearAt)/TIMING.SPIN_CLEAR_BOUNCE,0,1);
@@ -2082,6 +2101,7 @@ function buildPlay(){
   if(LB_ON)lbTop().then(rows=>{
     lbLive=[...rows.slice(0,5).map(r=>({pseudo:r.pseudo,score:+r.score})),lbLive.find(e=>e.me)||{pseudo:'TOI',score:0,me:true}];
   }).catch(()=>{});
+  playIntroT=performance.now(); // fondu noir + zoom qui se pose à l'entrée de partie
   show(null);state='playing';
   startMusic();
 }
@@ -2734,14 +2754,15 @@ function loop(now){
   const kiai=isKiai(el)&&el>0;
   if(state==='playing'){
     updateGame(el,dt);
-    if(kiai&&!wasKiai){bgFlash=Math.max(bgFlash,1.1);noiseHit(8000,.25,.18);} // entrée en kiai : flash + cymbale
+    if(kiai&&!wasKiai){bgFlash=Math.max(bgFlash,1.1);noiseHit(8000,.25,.18);kiaiRingT=now;} // entrée en kiai : flash + cymbale + onde
     wasKiai=kiai;
     if(kiai)spawnKiai();
   }
+  const introT=playIntroT?clamp((now-playIntroT)/650,0,1):1;
   cx.save();
   if(shake>0)cx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
-  if(opt.fx){
-    const z=1+bass*.012+bgFlash*.004;
+  if(opt.fx||introT<1){
+    const z=(1+bass*.012+bgFlash*.004)*(1+.03*(1-easeOut(introT))); // zoom qui se pose à l'entrée
     cx.translate(W/2,H/2);cx.scale(z,z);cx.translate(-W/2,-H/2);
   }
   drawBG(el,kiai);
@@ -2772,11 +2793,20 @@ function loop(now){
     g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,'rgba(0,0,0,.93)');
     cx.fillStyle=g;cx.fillRect(0,0,W,H);
   }
+  // onde de choc à l'entrée des sections kiai
+  if(kiaiRingT&&now-kiaiRingT<700){
+    const kt=(now-kiaiRingT)/700;
+    cx.save();cx.globalAlpha=(1-kt)*.22;
+    cx.beginPath();cx.arc(W/2,H/2,easeOut(kt)*Math.max(W,H)*.75,0,PI2);
+    cx.strokeStyle='#ff66aa';cx.lineWidth=10*(1-kt)+2;cx.stroke();cx.restore();
+  }
   if(state==='playing'&&!mods.nf)drawVignette(); // danger : rouge qui monte sur les bords
   drawHP();drawHUD(el,kiai);drawErrBar();drawCursor();
-  if(state==='paused'){
-    cx.fillStyle='rgba(0,0,0,.45)';cx.fillRect(0,0,W,H);
-  }
+  // assombrissement de pause ANIMÉ (plus de coupure sèche)
+  pauseDim+=((state==='paused'?.45:0)-pauseDim)*.18;
+  if(pauseDim>.01){cx.fillStyle='rgba(0,0,0,'+pauseDim.toFixed(3)+')';cx.fillRect(0,0,W,H);}
+  // fondu noir d'entrée de partie
+  if(introT<1){cx.fillStyle='rgba(4,2,8,'+((1-introT)*.92).toFixed(3)+')';cx.fillRect(0,0,W,H);}
 }
 requestAnimationFrame(loop);
 </script>
