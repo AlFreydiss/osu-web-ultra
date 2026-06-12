@@ -787,12 +787,30 @@ async function analyze(buf){
     }
     return out;
   }
+  // Détecteur MÉLODIQUE (legato) : flux spectral court sur la bande voix. Capte les
+  // CHANGEMENTS de note même sans creux d'énergie (notes liées du chant) — là où le
+  // détecteur d'énergie classique fond une mélodie tenue en une seule note.
+  function detectFlux(arr,band){
+    const back=Math.max(1,Math.round(wps*.05)); // ~50 ms de recul
+    let ge=0;for(let i=0;i<nb;i++)ge+=arr[i];ge/=nb||1; // énergie moyenne de la bande
+    const fl=new Float32Array(nb);
+    for(let i=back;i<nb;i++){const f=arr[i]-arr[i-back];fl[i]=f>0?f:0;}
+    const hist=Math.round(wps*.36);
+    const out=[];let fsum=0,last=-9999;
+    for(let i=back;i<nb;i++){
+      fsum+=fl[i];if(i>=back+hist)fsum-=fl[i-hist];
+      if(i<back+hist)continue;
+      const avg=fsum/hist,t=i*wms;
+      // pic de flux net + énergie absolue suffisante (vraie note chantée, pas du souffle)
+      if(fl[i]>avg*1.7&&fl[i]>=fl[i-1]&&arr[i]>ge*.7&&t-last>=120){
+        last=t;out.push({t,s:clamp(fl[i]/(avg+1e-9),1,3),b:band,v:1});
+      }
+    }
+    return out;
+  }
   // Pondération : la VOIX (médiums) gagne les fenêtres de sélection de genMap,
   // l'instru (kick/basse, hats) compte moins — la map suit les paroles d'abord.
   const weigh=(arr,w)=>{for(const b of arr)b.s*=w;return arr;};
-  let lows=weigh(detect(EL,1.6,200,1),.78),
-      mids=weigh(detect(EM,1.4,140,2),1.35),
-      highs=weigh(detect(EH,1.65,150,0),.85);
   // tenue vocale : si l'énergie médiums reste haute après l'attaque, c'est une
   // note CHANTÉE TENUE → genMap en fera un slider qui suit la voix (b.h en ms)
   const markHolds=arr=>{for(const b of arr){
@@ -800,8 +818,11 @@ async function analyze(buf){
     let i=i0+1;while(i<nb&&i-i0<90&&EM[i]>=ref)i++;
     b.h=Math.round((i-i0)*wms);
   }return arr;};
-  markHolds(mids);
-  let beats=lows.concat(mids,highs).sort((a,b)=>a.t-b.t);
+  let lows=weigh(detect(EL,1.6,200,1),.78),
+      mids=markHolds(weigh(detect(EM,1.3,140,2),1.35)),       // seuil baissé : capte les notes douces
+      melo=markHolds(weigh(detectFlux(EM,2),1.45)),           // attaques mélodiques / legato
+      highs=weigh(detect(EH,1.65,150,0),.85);
+  let beats=lows.concat(mids,melo,highs).sort((a,b)=>a.t-b.t);
   const merged=[];
   for(const b of beats){
     const p=merged[merged.length-1];
@@ -818,9 +839,10 @@ async function analyze(buf){
   beats=merged;
   if(beats.length<35){
     lows=weigh(detect(EL,1.25,200,1),.78);
-    mids=markHolds(weigh(detect(EM,1.2,140,2),1.35));
+    mids=markHolds(weigh(detect(EM,1.15,140,2),1.35));
+    melo=markHolds(weigh(detectFlux(EM,2),1.45));
     highs=weigh(detect(EH,1.3,150,0),.85);
-    beats=lows.concat(mids,highs).sort((a,b)=>a.t-b.t);
+    beats=lows.concat(mids,melo,highs).sort((a,b)=>a.t-b.t);
   }
   const envDt=180,ne=Math.ceil(n/sr*1000/envDt),env=new Float32Array(ne);
   for(let i=0;i<nb;i++){const ei=Math.min(ne-1,Math.floor(i*wms/envDt));env[ei]+=E[i];}
@@ -851,7 +873,10 @@ async function analyze(buf){
   const vsm=new Float32Array(ne);
   for(let i=0;i<ne;i++)vsm[i]=(vEnv[Math.max(0,i-1)]+vEnv[i]+vEnv[Math.min(ne-1,i+1)])/3;
   const vsorted=[...vsm].sort((a,b)=>a-b);
-  const vmed=vsorted[Math.floor(.55*ne)]||0,vthr=Math.max(.06,vmed*1.35); // au-dessus de la médiane = voix active
+  // seuil interpolé plancher→pic : s'adapte que la voix soit rare OU omniprésente
+  // (un seuil médian×k passe au-dessus du chant quand la voix domine → rien ne sort)
+  const vfloor=vsorted[Math.floor(.35*ne)]||0,vpeak=vsorted[Math.floor(.97*ne)]||1;
+  const vthr=Math.max(.07,vfloor+(vpeak-vfloor)*.28);
   const vocal=[];let vs=-1;
   for(let i=0;i<=ne;i++){
     const on=i<ne&&vsm[i]>vthr;
@@ -866,7 +891,8 @@ async function analyze(buf){
   for(let i=vocal.length-2;i>=0;i--)
     if(vocal[i+1].s-vocal[i].e<360){vocal[i].e=vocal[i+1].e;vocal.splice(i+1,1);}
   for(const v of vocal){v.s-=140;v.e+=140;}
-  const hasVocal=vocal.length>=2&&vocal.reduce((a,v)=>a+(v.e-v.s),0)>Math.min(8000,n/sr*1000*.15);
+  const vocTot=vocal.reduce((a,v)=>a+(v.e-v.s),0);
+  const hasVocal=vocal.length>=1&&vocTot>Math.min(6000,n/sr*1000*.12);
   const hg={};
   for(let i=1;i<beats.length;i++){
     const d=beats[i].t-beats[i-1].t;
