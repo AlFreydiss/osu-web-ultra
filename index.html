@@ -413,8 +413,8 @@ const SKIN={
   RIM_W:.025,          // liseré sombre sous l'anneau (× rayon)
   INNER_R:.78,         // anneau intérieur clair (× rayon)
   NUM_SIZE:.55,        // numéro de combo (× diamètre... part du rayon ×1.1)
-  APPROACH_W:.08,      // trait de l'approach circle (× rayon)
-  APPROACH_FROM:4,     // l'approach part de 4× le rayon
+  APPROACH_W:.06,      // trait de l'approach circle (× rayon) — fin façon Argon
+  APPROACH_FROM:3.4,   // l'approach part de 3.4× le rayon (moins envahissant à l'apparition)
   FOLLOW_SCALE:2.4,    // follow circle du slider (× rayon)
   SLIDER_BORDER:.12,   // bordure blanche du corps (× rayon)
   SLIDER_BODY_A:.30,   // opacité de la teinte combo dans le corps
@@ -1023,13 +1023,19 @@ function genMap(){
   };
   const sel=[];let last=-9999;
   for(const b of analysis.beats){
-    // quasi-silence (respiration, pause instrumentale) : pas de notes parasites
     const ei=Math.min(analysis.env.length-1,Math.floor(b.t/analysis.envDt));
-    if(analysis.env[ei]<.10&&b.s<2)continue;
+    const eVal=analysis.env[ei];
+    const inVoc=analysis.hasVocal&&inVocal(b.t);
+    // PAS de voix ici → on ne mappe l'instru que s'il est FRANC. Faible (énergie basse,
+    // onset mou, pas de kick net) = pas de piano/accent marquant → on ne met RIEN.
+    if(!inVoc){
+      if(eVal<.10&&b.s<2)continue;                 // quasi-silence
+      if(eVal<.22&&b.s<2&&b.b!==1)continue;         // instrumental faible (aucun accent franc)
+    }
     // morceau chanté : on suit la VOIX. Dans une phrase → seulement les syllabes
     // (pas le kick/instru entre les mots) ; entre deux phrases → silence.
     if(analysis.hasVocal){
-      if(inVocal(b.t)){if(!(b.b===2||b.v||b.h>0)&&b.s<2.2)continue;}
+      if(inVoc){if(!(b.b===2||b.v||b.h>0)&&b.s<2.2)continue;}
       else if(interBreath(b.t))continue;
     }
     const g=isKiai(b.t)?d.gap/(opt.diff>=2?1.75:1.45):d.gap; // REFRAIN : ça accélère fort
@@ -1099,17 +1105,47 @@ function genMap(){
       ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
       ang=Math.atan2(ty-y,tx-x);
     }
-    // anti-chevauchement : deux notes éloignées dans le temps mais collées (après
-    // clamp aux bords) = illisible → on repousse perpendiculairement vers le terrain
-    if(!stream&&gap>260){
-      const dd=Math.hypot(tx-x,ty-y);
-      if(dd<R*1.4){
-        const pa=Math.atan2(ty-(PF.oy+OSU_H*PF.s/2),tx-(PF.ox+OSU_W*PF.s/2))||ang;
-        const push=R*1.8;
-        tx=clamp(tx+Math.cos(pa)*push,padS,W-padS);
-        ty=clamp(ty+Math.sin(pa)*push,padT,H-padB);
-        ang=Math.atan2(ty-y,tx-x);
+    // anti-chevauchement : une note ne doit pas apparaître SUR une autre encore
+    // affichée (approach en cours, t à moins de PRE). On fait PIVOTER la direction du
+    // jump autour de la note précédente (distance gardée) jusqu'à une position libre.
+    {
+      const minSep=R*2.05;
+      // ignore le voisin de chaîne immédiat (< 215 ms = stream/rythme serré voulu),
+      // mais empêche de tomber sur une note plus ancienne encore à l'écran.
+      const clear=(qx,qy)=>{
+        for(let j=objs.length-1;j>=0&&b.t-objs[j].t<PRE;j--){
+          const o2=objs[j];if(o2.k===2||b.t-o2.t<215)continue;
+          if(Math.hypot(qx-o2.x,qy-o2.y)<minSep)return false;
+          if(o2.k===1&&o2.path){const e=o2.path.pts[o2.path.pts.length-1]; // fin de slider
+            if(Math.hypot(qx-e.x,qy-e.y)<minSep)return false;}
+        }
+        return true;
+      };
+      if(!clear(tx,ty)){
+        let found=false;
+        // on pivote la direction autour de la note précédente ; si rien n'est libre,
+        // on essaie aussi des distances plus courtes/longues (dégage les coins denses)
+        for(const dm of[1,.72,1.3,.55]){
+          for(let s=1;s<=18&&!found;s++){
+            const aa=ang+(s&1?1:-1)*.38*Math.ceil(s/2);
+            const dd=clamp(dist*dm,70,W);
+            const qx=clamp(x+Math.cos(aa)*dd,padS,W-padS),qy=clamp(y+Math.sin(aa)*dd,padT,H-padB);
+            if(clear(qx,qy)){tx=qx;ty=qy;ang=aa;found=true;}
+          }
+          if(found)break;
+        }
+        if(!found){ // recours : on repousse radialement hors de la plus proche
+          let nx2=x,ny2=y,best=1e9;
+          for(let j=objs.length-1;j>=0&&b.t-objs[j].t<PRE;j--){
+            const o2=objs[j];if(o2.k===2||b.t-o2.t<215)continue;
+            const dd=Math.hypot(tx-o2.x,ty-o2.y);if(dd<best){best=dd;nx2=o2.x;ny2=o2.y;}
+          }
+          let pa=Math.atan2(ty-ny2,tx-nx2);if(best<1e-2||!isFinite(pa))pa=ang+1.7;
+          tx=clamp(nx2+Math.cos(pa)*minSep,padS,W-padS);
+          ty=clamp(ny2+Math.sin(pa)*minSep,padT,H-padB);
+        }
       }
+      ang=Math.atan2(ty-y,tx-x);
     }
     // note chantée TENUE (b.h = durée de tenue vocale) : on force un slider qui suit la voix
     const hold=b.b===2&&(b.h||0)>260&&gap>320&&gap<2600;
@@ -1495,7 +1531,7 @@ function approach(x,y,col,el,t,alpha){
   const ar=R*(SKIN.APPROACH_FROM-(SKIN.APPROACH_FROM-1)*prog);
   cx.save();cx.globalAlpha=Math.min(.9,alpha*.9);
   cx.beginPath();cx.arc(x,y,ar,0,PI2);
-  cx.strokeStyle=col;cx.lineWidth=Math.max(2,R*SKIN.APPROACH_W);cx.stroke();cx.restore();
+  cx.strokeStyle=col;cx.lineWidth=Math.max(1.6,R*SKIN.APPROACH_W);cx.stroke();cx.restore();
 }
 
 function drawCircleObj(o,el){
