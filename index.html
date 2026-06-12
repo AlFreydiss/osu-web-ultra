@@ -169,6 +169,8 @@ body.playing{cursor:none}
 .mc-badge{position:absolute;top:8px;right:10px;background:#7CFF4F;color:#0a1404;font-weight:800;font-size:8.5px;letter-spacing:.1em;border-radius:3px;padding:2px 7px}
 .mc-badge.mc-loc{background:#66CCFF;color:#04141f}
 .mc-dl{position:absolute;right:10px;bottom:7px;font-size:10px;color:#ffffff77}
+.mc-gr{position:absolute;right:12px;top:24px;font-weight:900;font-family:'Varela Round',sans-serif;font-size:14px;text-shadow:0 0 9px currentColor}
+.dc-gr{margin-left:8px;font-weight:900;font-family:'Varela Round',sans-serif;font-size:13px;text-shadow:0 0 8px currentColor}
 .ss-wrap{flex:1;display:flex;width:100%;padding:26px 30px 86px;gap:26px;align-items:flex-start;overflow:hidden}
 .ss-info{transform:skewX(-8deg);background:linear-gradient(135deg,rgba(16,12,28,.94),rgba(24,16,40,.9));border:1px solid #ffffff14;border-radius:14px;padding:22px 34px;max-width:520px;min-width:360px;box-shadow:0 18px 60px #000a;color:#fff;margin-left:-6px}
 .ss-info>*{transform:skewX(8deg)}
@@ -529,7 +531,31 @@ const $=id=>document.getElementById(id);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 const PI2=Math.PI*2;
 const CLR=['#e87aff','#ff4aa0','#ff9e3c','#ffd700','#00dfc8','#70aaff']; // particules/menu uniquement
-const comboCLR=()=>opt.skinBeige?SKIN.COMBO_BEIGE:SKIN.COMBO_LAZER;
+/* Couleurs de combo PAR MAP (comme les beatmap colours d'osu) : palette de 4
+   teintes générée depuis la couleur du niveau prêt sélectionné. */
+let curPalette=null,palKey='';
+function _h2hsl(hex){const[r,g,b]=h2r(hex).map(v=>v/255);
+  const mx=Math.max(r,g,b),mn=Math.min(r,g,b),l=(mx+mn)/2;let h=0,s=0;
+  if(mx!==mn){const d=mx-mn;s=l>.5?d/(2-mx-mn):d/(mx+mn);
+    h=mx===r?((g-b)/d+(g<b?6:0)):mx===g?((b-r)/d+2):((r-g)/d+4);h*=60;}
+  return[h,s,l];}
+function _hsl2hex(h,s,l){
+  h=((h%360)+360)%360;
+  const f=n=>{const k=(n+h/30)%12,a=s*Math.min(l,1-l);
+    return Math.round((l-a*Math.max(-1,Math.min(k-3,9-k,1)))*255);};
+  return'#'+[f(0),f(8),f(4)].map(v=>v.toString(16).padStart(2,'0')).join('');}
+function paletteFrom(hex){
+  const[h,s,l]=_h2hsl(hex),S=clamp(s,.55,.9),L=clamp(l,.52,.66);
+  return[_hsl2hex(h,S,L),_hsl2hex(h+42,S,L),_hsl2hex(h-46,S*.95,L),_hsl2hex(h+175,S*.85,L)];
+}
+function setPalette(entry){
+  const k=entry&&entry.featured?entry.color:'';
+  if(k===palKey)return;
+  palKey=k;
+  curPalette=k?paletteFrom(k):null;
+  SPRITES.key='';buildSprites(); // re-bake aux couleurs de la map
+}
+const comboCLR=()=>opt.skinBeige?SKIN.COMBO_BEIGE:(curPalette||SKIN.COMBO_LAZER);
 const comboCol=ci=>comboCLR()[ci%4];
 const h2r=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
 const fmtT=ms=>{const s=Math.max(0,Math.floor(ms/1000));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
@@ -932,6 +958,11 @@ function genMap(){
       ang+=.9;sCurve=-sCurve;
       tx=x+Math.cos(ang)*dist;ty=y+Math.sin(ang)*dist;}
     tx=clamp(tx,padS,W-padS);ty=clamp(ty,padT,H-padB);
+    // kiai en Difficile/Expert : jumps miroir nerveux façon osu (grands allers-retours)
+    if(kiai&&!stream&&opt.diff>=2&&rng()<.32){
+      tx=clamp(W-tx+(rng()-.5)*90,padS,W-padS);
+      ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
+    }
     if(!stream&&gap>320&&gap<1600&&rng()<d.sld*(kiai?.8:1)){
       const rep=gap>900&&rng()<.45?1:0;
       const sdur=rep?clamp(gap*.42,220,800):clamp(gap*.82,240,1200);
@@ -971,6 +1002,20 @@ let vfxList=[],trail=[],kp=[],errsAll=[];
 let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0,wasKiai=false;
 let bass=0,mid=0;
 const board=store.get('board',{}); // scores locaux persistés entre sessions
+/* Meilleur grade local — affiché sur les cartes du song select (comme lazer) */
+const GRADE_COL={SS:'#ffee44',S:'#ffee44',A:'#88ff66',B:'#4499ff',C:'#cc66ff',D:'#ff5555'};
+const GRADE_ORDER=['D','C','B','A','S','SS'];
+function bestGradeFor(song,diff){
+  let best=null;
+  for(const k in board){
+    const parts=k.split('|');
+    if(parts[0]!==song)continue;
+    if(diff!=null&&+parts[1]!==diff)continue;
+    for(const e of board[k])
+      if(!best||GRADE_ORDER.indexOf(e.g)>GRADE_ORDER.indexOf(best))best=e.g;
+  }
+  return best;
+}
 const getAcc=()=>{const t=n3+n1+n5+nm;return t?(n3*300+n1*100+n5*50)/(t*300)*100:100;};
 const calcSc=q=>Math.round(q*(1+Math.floor(combo/10)*.08)*scoreMul());
 
@@ -1013,6 +1058,13 @@ class HitFX{
     if(this.age>800)this.gone=true;}
   draw(){
     const t=Math.min(1,this.age/700);
+    if(this.q===10){ // pop de tick : minuscule et bref, ne chevauche rien
+      const tt=Math.min(1,this.age/300);if(tt>=1)return;
+      cx.save();cx.globalAlpha=(1-tt)*.6;
+      cx.beginPath();cx.arc(this.x,this.y,R*(.25+tt*.35),0,PI2);
+      cx.strokeStyle=this.c;cx.lineWidth=2*(1-tt);cx.stroke();cx.restore();
+      return;
+    }
     if(this.q>0){
       cx.save();cx.globalAlpha=Math.max(0,(1-t)*.7);
       cx.beginPath();cx.arc(this.x,this.y,R*(1+t*1.5),0,PI2);
@@ -1206,7 +1258,7 @@ function _dotSprite(){
   return c;
 }
 function buildSprites(){
-  const key=R.toFixed(2)+'|'+(opt.skinBeige?'b':'l')+'|'+DPRv;
+  const key=R.toFixed(2)+'|'+(opt.skinBeige?'b':'l')+'|'+DPRv+'|'+palKey;
   if(SPRITES.key===key||!(R>0))return;
   SPRITES.key=key;
   SPRITES.circ=comboCLR().map(_circSprite);
@@ -1374,14 +1426,15 @@ function drawSliderObj(o,el){
     const ph=clamp((el-o.t)/o.dur,0,o.rep?2:1);
     const pos=o.rep?(ph<=1?ph:2-ph):ph;
     const bp=ptAt(p,pos);
-    const folR=R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8);
+    const folR=R*(SKIN.FOLLOW_SCALE+opt.aim/100*.8); // hitbox (l'aide à la visée élargit la zone…)
+    const folVis=R*SKIN.FOLLOW_SCALE;                // …mais le VISUEL reste à 2.4×R, taille lazer
     const fol=(pressing&&Math.hypot(mx-bp.x,my-bp.y)<folR)||(o.folLast!==undefined&&el-o.folLast<80);
-    // follow circle : pop élastique à l'accroche, rétrécit au lâcher
+    // follow circle : pop élastique discret à l'accroche, rétrécit au lâcher
     if(fol&&!o.folOn){o.folOn=true;o.folT=el;}
     if(!fol&&o.folOn){o.folOn=false;o.folT=el;}
     const ft=clamp((el-(o.folT||o.t))/180,0,1);
-    const over=fol?1+.25*Math.sin(ft*Math.PI):1; // léger overshoot élastique
-    const fs=fol?(.6+.4*easeOut(ft))*over:1-.5*easeOut(ft);
+    const over=fol?1+.12*Math.sin(ft*Math.PI):1; // overshoot réduit : plus de collisions visuelles
+    const fs=fol?(.7+.3*easeOut(ft))*over:1-.5*easeOut(ft);
     cx.save();
     // slider ball : sprite pré-rendu + chevron orienté dans le sens du déplacement
     const bs=SPRITES.ball[o.ci%4];
@@ -1393,12 +1446,12 @@ function drawSliderObj(o,el){
     cx.beginPath();cx.moveTo(-R*.1,-R*.26);cx.lineTo(R*.22,0);cx.lineTo(-R*.1,R*.26);cx.stroke();
     cx.restore();
     // follow circle : anneau teinté combo qui RESPIRE pendant le tracking
-    const frR=folR*Math.max(.2,fs);
-    const breathe=fol?.46+.12*Math.sin(performance.now()/110):.18;
+    const frR=folVis*Math.max(.2,fs);
+    const breathe=fol?.46+.1*Math.sin(performance.now()/110):.18;
     cx.globalAlpha=breathe;
     cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
     cx.strokeStyle=`rgba(${Math.min(255,r+130)},${Math.min(255,g+130)},${Math.min(255,b+130)},1)`;
-    cx.lineWidth=fol?Math.max(4,R*.15):2;cx.stroke();
+    cx.lineWidth=fol?Math.max(3,R*.11):2;cx.stroke();
     if(fol){ // fin liseré blanc discret par-dessus
       cx.globalAlpha=.35;
       cx.beginPath();cx.arc(bp.x,bp.y,frR,0,PI2);
@@ -1674,10 +1727,13 @@ function drawLiveBoard(){
   cx.restore();
 }
 function i0(e){return e._i||(e._i=Math.random().toString(36).slice(2,6));}
+let dispScore=0; // le score ROULE vers sa valeur (compteur lazer)
 function drawHUD(el,kiai){
   cx.save();
+  dispScore+=(score-dispScore)*.22;
+  if(Math.abs(score-dispScore)<1)dispScore=score;
   /* — Score (segments, haut droite, discret comme lazer) — */
-  segText(String(score).padStart(8,'0'),W-14,12,19,'#fff','right',true);
+  segText(String(Math.round(dispScore)).padStart(8,'0'),W-14,12,19,'#fff','right',true);
   /* — PRÉCISION + combo compact (sous le score) — */
   hudLabel('précision',W-14,58,'right');
   const acc=getAcc();
@@ -1944,7 +2000,7 @@ function buildPlay(){
   map=genMap();
   score=0;combo=0;maxCombo=0;hp=1;n3=0;n1=0;n5=0;nm=0;lastBurst=0;
   vfxList=[];trail=[];kp=[];errs=[];errsAll=[];bgFlash=0;cfFlash=0;beatPtr=0;shake=0;
-  keysOv.forEach(k=>{k.n=0;k.on=false;});clickTimes=[];comboBreakFX=null;_lbCache=null;liveStart=0;cursorSc=1;
+  keysOv.forEach(k=>{k.n=0;k.on=false;});clickTimes=[];comboBreakFX=null;_lbCache=null;liveStart=0;cursorSc=1;dispScore=0;
   // leaderboard in-game : top mondial de la map + l'entrée du joueur (réordonnée en live)
   lbLive=[{pseudo:store.get('pseudo','')||'TOI',score:0,me:true}];lbLiveY=null;
   if(LB_ON)lbTop().then(rows=>{
@@ -1984,6 +2040,9 @@ function finish(){
     '<span style="color:#ff5555">Miss</span><b>'+nm+'</b>';
   const key=songName+'|'+opt.diff+'|'+modStr();
   if(!board[key])board[key]=[];
+  const prevBest=board[key][0]?board[key][0].score:0;
+  const isRecord=prevBest>0&&score>prevBest;
+  $('gSub').textContent=(isRecord?'🏆 NOUVEAU RECORD — ':'')+$('gSub').textContent;
   const entry={score,acc,maxCombo,g};
   board[key].push(entry);
   board[key].sort((a,b)=>b.score-a.score);
@@ -2125,6 +2184,7 @@ async function runAnalysis(){
 }
 function fillReadyPanels(){
   setSsVideo(curEntry);
+  setPalette(curEntry); // beatmap colours : la palette de combo suit la map
   $('rTitle').textContent=songName;
   $('rArtist').textContent=curEntry&&curEntry.featured?(curEntry.anime+' — '+curEntry.artist):'Importé sur Freyd\'iu';
   $('rInfo').innerHTML='<span>⏱ <b>'+fmtT(analysis.dur*1000)+'</b></span><span>♪ <b>'+(analysis.bpm||'?')+'</b> BPM</span>'+
@@ -2193,6 +2253,11 @@ function updatePreview(){
     const stars=card.querySelector('.dc-stars');
     const full=Math.min(10,Math.round(cs2));
     stars.innerHTML='<span style="color:'+col+'">'+'★'.repeat(full)+'</span><span style="color:#ffffff26">'+'★'.repeat(Math.max(0,10-full))+'</span>';
+    // grade local obtenu sur cette difficulté
+    let gel=card.querySelector('.dc-gr');
+    if(!gel){gel=document.createElement('span');gel.className='dc-gr';card.querySelector('.dc-top').appendChild(gel);}
+    const dg=analysis?bestGradeFor(songName,d):null;
+    gel.textContent=dg||'';gel.style.color=dg?GRADE_COL[dg]:'';
   });
 }
 
@@ -2294,14 +2359,15 @@ function renderLibrary(){
   else if(sort==='anime')list.sort((a,b)=>(a.anime||'zz').localeCompare(b.anime||'zz','fr'));
   $('ssCount').textContent=list.length+' map'+(list.length>1?'s':'');
   $('mapRow').innerHTML=list.map(e=>{
-    const sel=e===curEntry;
+    const sel=e===curEntry,g2=bestGradeFor(e.name,null);
     return'<button class="mapcard'+(sel?' sel':'')+'" data-id="'+e.id+'" style="--mc:'+(e.color||'#ff66aa')+
       (e.cover?';background-image:url('+e.cover+')':'')+'">'+
       '<span class="mc-shade"></span>'+
       '<span class="mc-body"><span class="mc-title">'+(e.emoji?e.emoji+' ':'')+esc(e.name)+'</span>'+
       '<span class="mc-sub">'+esc(e.anime||e.artist||'Import')+(e.artist&&e.anime?' · '+esc(e.artist):'')+'</span>'+
       (e.featured?'<span class="mc-badge">CLASSÉE</span>':'<span class="mc-badge mc-loc">IMPORT</span>')+
-      (e.buf?'':'<span class="mc-dl">↓ télécharger</span>')+'</span></button>';
+      (e.buf?'':'<span class="mc-dl">↓ télécharger</span>')+
+      (g2?'<span class="mc-gr" style="color:'+GRADE_COL[g2]+'">'+g2+'</span>':'')+'</span></button>';
   }).join('');
   document.querySelectorAll('.mapcard').forEach(el=>{
     el.onclick=()=>{const e=library.find(x=>x.id===el.dataset.id);if(e)selectMap(e);};
@@ -2487,7 +2553,7 @@ $('bLevels').onclick=()=>{
     $('ssDet').innerHTML='<div class="ss-empty">Sélectionne une map à droite 👉</div>';
   }
   state='ready';show('sReady');renderLibrary();
-  if(analysis){startPreview();setSsVideo(curEntry);} // retour au select : musique + vidéo reprennent
+  if(analysis){startPreview();setSsVideo(curEntry);updatePreview();} // retour au select : musique + vidéo + grades à jour
 };
 $('ssQ').oninput=renderLibrary;
 $('ssSort').onchange=renderLibrary;
