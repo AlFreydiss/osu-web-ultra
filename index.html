@@ -1024,6 +1024,18 @@ function genMap(){
       tx=clamp(W-tx+(rng()-.5)*90,padS,W-padS);
       ty=clamp(H-ty+(rng()-.5)*70,padT,H-padB);
     }
+    // anti-chevauchement : deux notes éloignées dans le temps mais collées (après
+    // clamp aux bords) = illisible → on repousse perpendiculairement vers le terrain
+    if(!stream&&gap>260){
+      const dd=Math.hypot(tx-x,ty-y);
+      if(dd<R*1.4){
+        const pa=Math.atan2(ty-(PF.oy+OSU_H*PF.s/2),tx-(PF.ox+OSU_W*PF.s/2))||ang;
+        const push=R*1.8;
+        tx=clamp(tx+Math.cos(pa)*push,padS,W-padS);
+        ty=clamp(ty+Math.sin(pa)*push,padT,H-padB);
+        ang=Math.atan2(ty-y,tx-x);
+      }
+    }
     // note chantée TENUE (b.h = durée de tenue vocale) : on force un slider qui suit la voix
     const hold=b.b===2&&(b.h||0)>260&&gap>320&&gap<2600;
     if(!stream&&gap>320&&gap<2600&&(hold||rng()<d.sld*(kiai?.8:1))){
@@ -1075,6 +1087,12 @@ let vfxList=[],trail=[],kp=[],errsAll=[];
 let bgFlash=0,cfFlash=0,menuT=0,pauseEl=0,shake=0,beatPtr=0,lastBurst=0,wasKiai=false;
 let playIntroT=0,pauseDim=0,kiaiRingT=0;
 let bass=0,mid=0;
+// Normalisation haut rafraîchissement (144/240 Hz) : ratio du frame courant vs 60 Hz.
+// Les anims par-frame (decay, lerp) sont multipliées/élevées à cette puissance pour
+// tourner à la MÊME vitesse réelle quel que soit le Hz de l'écran.
+let frameNorm=1;
+const decayF=(r)=>Math.pow(r,frameNorm);     // x*=r  →  x*=decayF(r)
+const lerpF=(a)=>1-Math.pow(1-a,frameNorm);   // x+=(t-x)*a  →  x+=(t-x)*lerpF(a)
 const board=store.get('board',{}); // scores locaux persistés entre sessions
 /* Meilleur grade local — affiché sur les cartes du song select (comme lazer) */
 const GRADE_COL={SS:'#ffee44',S:'#ffee44',A:'#88ff66',B:'#4499ff',C:'#cc66ff',D:'#ff5555'};
@@ -1133,9 +1151,9 @@ class HitFX{
       if(q===300)this.spk=Array.from({length:5},()=>({a:Math.random()*PI2,v:1.6+Math.random()*2.2,l:1})); // étincelles radiales
     }
   }
-  tick(dt){this.age+=dt;
-    this.ptc.forEach(p=>{p.px+=p.vx;p.py+=p.vy;p.vy+=.13;p.l-=.032;});
-    if(this.spk)this.spk.forEach(s=>{s.l-=.05;});
+  tick(dt){this.age+=dt;const fn=dt/16.667;
+    this.ptc.forEach(p=>{p.px+=p.vx*fn;p.py+=p.vy*fn;p.vy+=.13*fn;p.l-=.032*fn;});
+    if(this.spk)this.spk.forEach(s=>{s.l-=.05*fn;});
     if(this.age>660)this.gone=true;}
   draw(){
     const t=Math.min(1,this.age/560); // jugements plus VIFS
@@ -1273,7 +1291,7 @@ function drawKiaiPtc(dt){
   let w=0;
   for(let i=0;i<kp.length;i++){
     const p=kp[i];
-    p.x+=p.vx;p.y+=p.vy;p.vy+=.12;p.l-=.011;
+    p.x+=p.vx*frameNorm;p.y+=p.vy*frameNorm;p.vy+=.12*frameNorm;p.l-=.011*frameNorm;
     if(p.l<=0||p.y>=H+30)continue;
     cx.globalAlpha=p.l*.7;
     cx.beginPath();cx.arc(p.x,p.y,2.6*p.l+.6,0,PI2);
@@ -1730,7 +1748,7 @@ function drawCursor(){
     }
     cx.restore();
   }
-  cursorSc+=((pressing?1.3:1)-cursorSc)*.32; // expansion douce au clic, comme lazer
+  cursorSc+=((pressing?1.3:1)-cursorSc)*lerpF(.32); // expansion douce au clic, comme lazer
   const sp=pressing?SPRITES.cursorHi:SPRITES.cursor;
   if(sp){
     const s=96*cursorSc*(opt.curSize||1.15); // gros par défaut, réglable dans les Options
@@ -1901,7 +1919,7 @@ function drawLiveBoard(){
   rows.forEach((e,i)=>{
     const key=e.me?'__me__':e.pseudo+i0(e);
     const ty=top+i*(rh+4);
-    lbLiveY[key]=lbLiveY[key]===undefined?ty:lbLiveY[key]+(ty-lbLiveY[key])*.15; // glissement fluide
+    lbLiveY[key]=lbLiveY[key]===undefined?ty:lbLiveY[key]+(ty-lbLiveY[key])*lerpF(.15); // glissement fluide
     const y=lbLiveY[key];
     cx.globalAlpha=e.me?.92:.6;
     cx.fillStyle=e.me?'rgba(24,38,20,.72)':'rgba(0,0,0,.38)';
@@ -1921,7 +1939,7 @@ function i0(e){return e._i||(e._i=Math.random().toString(36).slice(2,6));}
 let dispScore=0; // le score ROULE vers sa valeur (compteur lazer)
 function drawHUD(el,kiai){
   cx.save();
-  dispScore+=(score-dispScore)*.22;
+  dispScore+=(score-dispScore)*lerpF(.22);
   if(Math.abs(score-dispScore)<1)dispScore=score;
   /* — Score (segments, haut droite, discret comme lazer) — */
   segText(String(Math.round(dispScore)).padStart(8,'0'),W-14,12,19,'#fff','right',true);
@@ -2022,7 +2040,7 @@ function initMenuTris(){
 }
 let lastGradeCol='#ffee44';
 function drawMenuBG(){
-  menuT+=.016;
+  menuT+=.016*frameNorm;
   if(!menuTris)initMenuTris();
   // fond selon l'écran : menu violet, ÉCHEC rouge sombre, RÉSULTATS teinté du grade
   const mode=state==='failed'?'fail':state==='results'?'win':'menu';
@@ -2853,17 +2871,18 @@ let prev=0;
 function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min(48,now-prev);prev=now;
+  frameNorm=dt/16.667; // 1 à 60 Hz, ~0.41 à 144 Hz, ~0.25 à 240 Hz
   cx.setTransform(DPRv,0,0,DPRv,0,0); // base HD : tout le code dessine en px CSS
   if(state==='menu'||state==='loading'||state==='ready'||state==='results'||state==='failed'){
     if(bgVideo&&!bgVideo.paused)bgVideo.pause();
     drawMenuBG();return;}
   const el=state==='paused'?pauseEl:elapsed();
-  bgFlash=Math.max(0,bgFlash-.05);
-  cfFlash=Math.max(0,cfFlash-.05);
-  shake*=.86;if(shake<.2)shake=0;
+  bgFlash=Math.max(0,bgFlash-.05*frameNorm);
+  cfFlash=Math.max(0,cfFlash-.05*frameNorm);
+  shake*=decayF(.86);if(shake<.2)shake=0;
   if(fftData&&analyser){
     analyser.getByteFrequencyData(fftData);
-    let b=0;for(let i=1;i<7;i++)b+=fftData[i];bass=bass*.6+(b/6/255)*.4;
+    let b=0;for(let i=1;i<7;i++)b+=fftData[i];bass+=((b/6/255)-bass)*lerpF(.4);
     let m2=0;for(let i=10;i<40;i++)m2+=fftData[i];mid=m2/30/255;
   }
   const kiai=isKiai(el)&&el>0;
@@ -2918,7 +2937,7 @@ function loop(now){
   if(state==='playing'&&!mods.nf)drawVignette(); // danger : rouge qui monte sur les bords
   drawHP();drawHUD(el,kiai);drawErrBar();drawCursor();
   // assombrissement de pause ANIMÉ (plus de coupure sèche)
-  pauseDim+=((state==='paused'?.45:0)-pauseDim)*.18;
+  pauseDim+=((state==='paused'?.45:0)-pauseDim)*lerpF(.18);
   if(pauseDim>.01){cx.fillStyle='rgba(0,0,0,'+pauseDim.toFixed(3)+')';cx.fillRect(0,0,W,H);}
   // fondu noir d'entrée de partie
   if(introT<1){cx.fillStyle='rgba(4,2,8,'+((1-introT)*.92).toFixed(3)+')';cx.fillRect(0,0,W,H);}
